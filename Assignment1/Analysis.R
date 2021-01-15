@@ -25,7 +25,6 @@ screePlot <- create_screePlot(as.matrix(scale(cityweather)))
 screePlot
 
 
-
 ### Compare our sparse PCA function to the PMD() function in R
 result_ours <- sparce_PCA(as.matrix(cityweather), c1=1, c2=1)
 result_ours$v

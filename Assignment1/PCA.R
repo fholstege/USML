@@ -89,11 +89,21 @@ sparce_PCA <- function(mX, c1, c2, iMax=100){
   return(results)
 }
 
+####
+# create_screePlot: creates screeplot for an matrix X
+# arguments: 
+#     mX: a matrix object
+# 
+# output: 
+#     screePlot: a ggplot object with the screeplot
+
 
 create_screePlot <- function(mX){
   
+  # get result of PCA
   result_PCA <- svd_components(mX)
   
+  # create screeplot
   screePlot <- ggplot(data=data.frame(result_PCA), aes(x=seq(1,length(explained_variance),1), y=explained_variance))+
                       geom_line(linetype="dashed",color="red", size=2)+
                       geom_point(color="blue", size=4)+
