@@ -22,26 +22,23 @@ result_ours <- svd_components(scale(as.matrix(cityweather)))
 
 ### create an scree plot
 screePlot <- create_screePlot(as.matrix(scale(cityweather)))
-screePlot
-
 
 ### Compare our sparse PCA function to the PMD() function in R
-result_ours <- sparce_PCA(as.matrix(cityweather), c1=1,c2=1)
+# our sparse PCA
+result_ours <- sparce_PCA(as.matrix(cityweather), c1=1.5,c2=1.5)
 result_ours$v
 result_ours$u
 result_ours$sigma
 
-result_pmd <- PMD(as.matrix(cityweather), sumabsu = 1, sumabsv = 1, center = FALSE)
+# sparce PCA from PMA package
+result_pmd <- PMD(as.matrix(cityweather), sumabsu = 1.5, sumabsv = 1.5, center = FALSE)
 result_pmd$v
 result_pmd$u
 result_pmd$d
 
-# the results appear quite similar, but not exactly - not sure if due to convergence, our initial u
+# the results appear very, very similar - when sumabsu, sumabsv = 1, then difference of 1-e16. No difference when other values are picked. 
 
 
-result_pmc <- SPC(as.matrix(cityweather),sumabs = 1, center = FALSE, K=1)
-result_pmc$v
-result_pmc$u
-result_pmc$d
 
-SPC
+
+

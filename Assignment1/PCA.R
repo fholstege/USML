@@ -52,10 +52,6 @@ sparce_PCA <- function(mX, c1, c2,iMax=100){
     
     # update each iteration
     i <- i + 1
-    
-    print(i)
-    print(dim(mX))
-    print(dim(v))
 
     # define matrix Xv
     mXv <- mX %*% v
