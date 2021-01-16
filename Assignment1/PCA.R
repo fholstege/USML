@@ -41,13 +41,10 @@ svd_components <- function(mX){
 #     c2: a constant, influences penalty term by constraining L1 norm of vector u
 # output: 
 #     result: a list object with the vector v, u, and sigma 
-sparce_PCA <- function(mX, c1, c2, iMax=100){
+sparce_PCA <- function(mX, c1, c2,iMax=100){
   
   # create initial v
   v <-  as.matrix(svd_components(mX)$components[,1])
-  
-  # create initial u
-  u <- mX %*% v
   
   # start while loop
   i = 0
@@ -55,17 +52,15 @@ sparce_PCA <- function(mX, c1, c2, iMax=100){
     
     # update each iteration
     i <- i + 1
+    
+    print(i)
+    print(dim(mX))
+    print(dim(v))
 
     # define matrix Xv
     mXv <- mX %*% v
-
-    # find lambda 1 with binary search
-    lambda1 <- binary_search(u, c1)
     
-    ## Floris: I am not sure when the while loop should break, e.g. when the algorithm has converged
-    if(lambda1 == 0){
-      break
-    }
+    lambda1 <- binary_search(mXv, c1)
     
     # get u, given V
     u  <- soft_l2norm(mXv, lambda1)
@@ -74,8 +69,8 @@ sparce_PCA <- function(mX, c1, c2, iMax=100){
     mXu <- t(mX) %*% u
 
     # then, determine lambda 2
-    lambda2 <- binary_search(v, c2)
-
+    lambda2 <- binary_search(mXu, c2)
+    
     # redefine v
     v <- soft_l2norm(mXu, lambda2)
     

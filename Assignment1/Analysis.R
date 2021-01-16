@@ -26,7 +26,7 @@ screePlot
 
 
 ### Compare our sparse PCA function to the PMD() function in R
-result_ours <- sparce_PCA(as.matrix(cityweather), c1=1, c2=1)
+result_ours <- sparce_PCA(as.matrix(cityweather), c1=1,c2=1)
 result_ours$v
 result_ours$u
 result_ours$sigma
@@ -37,3 +37,11 @@ result_pmd$u
 result_pmd$d
 
 # the results appear quite similar, but not exactly - not sure if due to convergence, our initial u
+
+
+result_pmc <- SPC(as.matrix(cityweather),sumabs = 1, center = FALSE, K=1)
+result_pmc$v
+result_pmc$u
+result_pmc$d
+
+SPC
