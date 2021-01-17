@@ -103,6 +103,7 @@ sparse_PCA <- function(mX, c1, c2, K){
   v.init <- svd_components(mX)$components[,1:K]
   v <- matrix(0, nrow = ncol(mX), ncol = K)
   u <- matrix(0, nrow = nrow(mX), ncol= K)
+  sigma <- numeric(0)
  
 
   for(k in 1:K){
@@ -111,23 +112,50 @@ sparse_PCA <- function(mX, c1, c2, K){
     
     v_k <- result_k$v
     u_k <- result_k$u
-    sigma_k <- result_k$sigma
+    sigma_k <- result_k$sigma[1,1]
     
     v[, k] <- v_k
     u[, k] <- u_k
+    sigma[k] <- sigma_k
     
-    
-    mR <- mR - sigma_k[1,1]*u_k %*% t(v_k)
+    mR <- mR - sigma_k*u_k %*% t(v_k)
 
   }
   
-  result = list(v = v, u = u, v.init=v.init)
+  VExplained_var <- 1/(nrow(mX)-1)*(sigma^2)[1:k]
+  
+  result = list(components = v, u = u,explained_variance=VExplained_var)
   
   return(result)
   
 }
+####
+# get_df_var: quick helper function for create_screePlot & create_varPlot, gets variance from PCA result and makes it fit for ggplot
+# arguments: 
+#     type: string, either PMD or SPC
+# 
+# output: 
+#     df_var: dataframe used in ggplot viz
 
-
+get_df_var <- function(type){
+        if(type == "PMD"){
+          
+          df_var <- data.frame(explained_variance = result_PCA$explained_variance)
+          
+        }else if(type == "SPC"){
+          
+          n <- nrow(result_PCA$u)
+          p <- nrow(result_PCA$v)
+          
+          d <- result_PCA$d
+          explained_variance <- 1/(n-1)*(d^2)[1:p]
+          df_var <- data.frame(explained_variance = explained_variance)
+          
+          
+        }
+  
+  return(df_var)
+}
 
 
 
@@ -139,10 +167,12 @@ sparse_PCA <- function(mX, c1, c2, K){
 # output: 
 #     screePlot: a ggplot object with the screeplot
 
-create_screePlot <- function(result_PCA){
+create_screePlot <- function(result_PCA, type="PMD"){
+  
+  df_var <- get_df_var(type)
   
   # create screeplot
-  screePlot <- ggplot(data=data.frame(result_PCA), aes(x=seq(1,length(explained_variance),1), y=explained_variance))+
+  screePlot <- ggplot(data=df_var,aes(x=seq(1,length(explained_variance),1), y=explained_variance))+
                       geom_line(linetype="dashed",color="red", size=2)+
                       geom_point(color="blue", size=4)+
                       labs(x = "Component", y="Eigenvalue")+
@@ -165,10 +195,12 @@ create_screePlot <- function(result_PCA){
 #     varPLot: a ggplot object with the plot showing the cumulative variance per added component
 
 
-create_varPlot <- function(result_PCA){
+create_varPlot <- function(result_PCA, type = "PMD"){
+  
+  df_var <- get_df_var(type)
   
   # create screeplot
-  varPlot <-  ggplot(data=data.frame(result_PCA), aes(x=seq(1,length(explained_variance),1), y=cumsum(explained_variance/sum(explained_variance))))+
+  varPlot <-  ggplot(data=df_var, aes(x=seq(1,length(explained_variance),1), y=cumsum(explained_variance/sum(explained_variance))))+
     geom_line(linetype="dashed",color="red", size=2)+
     geom_point(color="blue", size=4)+
     labs(x = "Component", y="% Variance Explained")+
@@ -182,14 +214,31 @@ create_varPlot <- function(result_PCA){
   
 }
 
-create_LoadingTable <- function(result_PCA, K){
+####
+# create_loadingTable: creates latex code for loadings of a PCA result
+# arguments: 
+#     result_PCA: list, created by svd_components or sparse_PCA
+# 
+# output: 
+#     varPLot: a ggplot object with the plot showing the cumulative variance per added component
+
+create_LoadingTable <- function(mX,result_PCA, K, type="PMD"){
   
-  lVariables <-colnames(mX_attributes)
+  # get variable names
+  lVariables <-colnames(mX)
   
-  dfLoadings <- data.frame(lVariables,result_PCA$components[,1:K])
+  # get components based on type
+  if(type=="PMD"){
+    components <- result_PCA$components[,1:K]
+  }else if (type=="SPC"){
+    components <- result_PCA$v[,1:K]
+  }
   
+  # create dataframe with variable names and loadings
+  dfLoadings <- data.frame(lVariables,components)
   colnames(dfLoadings) <- c("Variable", paste0("PC ", seq(1,K,1)))
   
+  # create latex table
   xtable(dfLoadings, type="latex")
   
   
