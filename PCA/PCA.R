@@ -180,7 +180,8 @@ create_screePlot <- function(result_PCA, type="PMD"){
                       theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
                             axis.text.y = element_text(size = 10), axis.title.y = element_text(size = 16))  +
                       geom_hline(yintercept = 1, linetype="dotted", 
-                                  color = "black", size=1.5)
+                                  color = "black", size=1.5)+
+                      lims(y = c(0, max(df_var$explained_variance)))
   return(screePlot)
   
   

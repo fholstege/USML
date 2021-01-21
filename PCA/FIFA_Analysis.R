@@ -9,7 +9,6 @@
 #           E) Analyse FIFA data with PCA and sparse PCA, and create relevant plots (scree, explained variance, loadings, biplot)
 #################
 
-
 #######
 # A) Load packages and pre-process the data
 #######
@@ -20,7 +19,9 @@ pacman::p_load(PMA,
                ggplot2,
                factoextra,
                xtable,
-               tidyverse)
+               tidyverse,
+               data.table,
+               psych)
 
 # load the data
 load("../Data/FIFA2017_NL.RData")
@@ -41,8 +42,6 @@ mX_attributes <- scale(as.matrix(df_fifa_attributes[,4:ncol(df_fifa_attributes)]
 #######
 # B) Define our functions for PCA and sparse PCA
 #######
-
-
 
 ####
 # svd_components: extracts the principal components and their explained variaance from a matrix X
@@ -75,7 +74,6 @@ svd_components <- function(mX){
   
   return(result)
 }
-
 
 ####
 # sparce_svd: applies sparce svd to a matrix X
@@ -127,8 +125,6 @@ sparse_svd<- function(mX, c1, c2,iMax=100, v=NULL){
   results <- list(v = v, u = u, sigma = sigma)
   return(results)
 }
-
-
 
 ####
 # sparce_PCA: applies sparce PCA to a matrix X, returns rank K
@@ -184,8 +180,6 @@ sparse_PCA <- function(mX, c1, c2, K){
   
 }
 
-
-
 #######
 # C) Quickly compare our functions to implementations by standard R packages
 #######
@@ -195,38 +189,26 @@ sparse_PCA <- function(mX, c1, c2, K){
 # We get the exact same results as prcomp 
 result_prcomp <- prcomp(mX_attributes)
 result_PCA <- svd_components(mX_attributes)
-result_prcomp$rotation
-result_PCA$components
 
 ### Compare our sparse PCA function to the PMD() function in R, for rank-1
 ## the results appear very, very similar - when sumabsu, sumabsv = 1, then difference of 1-e16. No difference when other values are picked.
 # our sparse PCA
 result_sparse_svd <- sparse_svd(mX_attributes, c1=1.5, c2=1.5)
-result_sparse_svd$v
-result_sparse_svd$u
 
 # sparce PCA from PMA package
 result_pmd <- PMD(mX_attributes, sumabsu = 1.5, sumabsv = 1.5, center = FALSE)
-result_pmd$v
-result_pmd$u
 
-### Compare our sparse PCA function to the PMD() function with a higher rank 
-## not exactly the same when ranks are higher - but this is likely because neither methods find a global maximum
+### Compare our sparse PCA function to the PMD() function with rank > 1
+## not exactly the same when ranks are higher, but always finds the same variables and in a close range. This is likely because both methods find a different but similar global maximum
 # our sparse PCA for rank > 1
 result_sparse_PCA <- sparse_PCA(mX_attributes, c1= sqrt(nrow(mX_attributes)),c2=2,K=5)
-result_sparse_PCA$components
-result_sparse_PCA$u
 
 # PMD implementation for rank > 1
 result_pmd_rank <- PMD(mX_attributes, sumabsu = 1.5, sumabsv = 1.5, K=5)
-result_pmd_rank$v
-result_pmd_rank$u
-
 
 #######
 # D) Define functions for visualization ((scree plot, explained variance, loadings, biplot))
 #######
-
 
 ####
 # get_df_var: quick helper function for create_screePlot & create_varPlot, gets variance from PCA result and makes it fit for ggplot
@@ -239,16 +221,17 @@ result_pmd_rank$u
 get_df_var <- function(type, result_PCA){
   if(type == "PMD"){
     
+    # grab explained variance directly from object
     df_var <- data.frame(explained_variance = result_PCA$explained_variance)
     
   }else if(type == "SPC"){
     
-    n <- nrow(result_PCA$u)
-    p <- nrow(result_PCA$v)
-
-    d <- result_PCA$d
-    explained_variance <- 1/(n-1)*(d^2)[1:p]
-    df_var <- data.frame(explained_variance = explained_variance)
+    # obtain eigenvalues from prop.var explained to ensure it follow same method as Shen and Huang
+    var_explained <- result_PCA$prop.var.explained
+    shifted_var_explained <- shift(result_PCA$prop.var.explained,1, fill = 0)
+    perc_var <- var_explained - shifted_var_explained
+  
+    df_var <- data.frame(explained_variance = perc_var*d)
     
   }
   
@@ -265,6 +248,7 @@ get_df_var <- function(type, result_PCA){
 
 create_screePlot <- function(result_PCA, type="PMD"){
   
+  # get explained variance, given type of result
   df_var <- get_df_var(type, result_PCA)
   
   # create screeplot
@@ -290,13 +274,16 @@ create_screePlot <- function(result_PCA, type="PMD"){
 # output: 
 #     varPLot: a ggplot object with the plot showing the cumulative variance per added component
 
-create_varPlot <- function(result_PCA, type = "PMD"){
+create_varPlot <- function(result_PCA, type = "PMD", xintercept=NULL){
   
+  # get explained variance, given type of result
   df_var <- get_df_var(type, result_PCA)
   
-  # create screeplot
+  # create varPlot
   varPlot <-  ggplot(data=df_var, aes(x=seq(1,length(explained_variance),1), y=cumsum(explained_variance/sum(explained_variance))))+
     geom_line(linetype="dashed",color="red", size=2)+
+    geom_vline(xintercept = xintercept, linetype="dotted", 
+               color = "black", size=1.5)+
     geom_point(color="blue", size=4)+
     labs(x = "Component", y="% Variance Explained")+
     theme_minimal() +
@@ -334,32 +321,47 @@ create_LoadingTable <- function(mX,result_PCA, K, type="PMD", latex=TRUE){
   
   # create latex table
   if(latex){
+    print("Latex code")
     xtable(dfLoadings, type="latex")
+  }else{
+    return(dfLoadings)
   }
 
-  return(dfLoadings)
-  
+
 }
 
-PCbiplot <- function(PC, x="PC1", y="PC2",type="PMD",mX, rownames = 1:nrow(mX)) {
+####
+# create_biplot: creates biplot for spc and prcomp results
+# arguments: 
+#     PC: list, results from SPC() or prcomp() functions
+#     x, y: string, principal components to be selected - always one of "PC1", "PC2", ..., "PCK"
+#     type: one of "prcomp" or "SPC" - depends on which function used for results
+#     rownames: optional, list with names to show with each dot in the biplot
+#     arrows: boolean, if TRUE then arrows are shown on biplot 
+#     x_label, y_label: optional, string, labels for x and y labels
+# output: 
+#     varPLot: a ggplot object with the plot showing the cumulative variance per added component
+
+create_biplot <- function(PC, x="PC1", y="PC2",type="prcomp",mX, rownames = 1:nrow(mX), arrows=FALSE, x_label = x, y_label= y) {
   
+  # get names of the variables
   varnames <- colnames(mX)
   
-  if(type=="PMD"){
+  # based on type, get dataframe with results
+  if(type=="prcomp"){
     data <- data.frame(obsnames=rownames, PC$x)
     components <- PC$rotation
 
   }else if(type=="SPC"){
     mPC <- data.frame(mX %*% PC$v)
     colnames(mPC) <- c(paste0("PC", seq(1,ncol(mPC),1)))
-    
     data <- data.frame(obsnames=rownames, mPC)
     components <- data.frame(PC$v)
     colnames(components) <- c(paste0("PC", seq(1,ncol(mPC),1)))
   }
   
 
-
+  # create plot
   plot <- ggplot(data, aes_string(x=x, y=y)) + geom_text(alpha=.4, size=3, aes(label=obsnames))
   plot <- plot + geom_hline(yintercept=0, size=.2) + geom_vline(xintercept=0, size=.2)
   datapc <- data.frame(varnames=varnames, components)
@@ -371,10 +373,19 @@ PCbiplot <- function(PC, x="PC1", y="PC2",type="PMD",mX, rownames = 1:nrow(mX)) 
                       v1 = .7 * mult * (get(x)),
                       v2 = .7 * mult * (get(y)) 
   )%>% filter(!(v2 == 0 & v1 ==0))
-  plot <- plot + coord_equal() + geom_text(data=datapc, aes(x=v1, y=v2, label=varnames), size = 5, vjust=1, color="red")
-  plot <- plot + geom_segment(data=datapc, aes(x=0, y=0, xend=v1, yend=v2), arrow=arrow(length=unit(0.2,"cm")), alpha=0.75, color="red")
-  plot <- plot + theme_minimal()
-  plot
+
+  # if arrows is true, add arrows here
+  if(arrows){
+    plot <- plot + coord_equal() + geom_text(data=datapc, aes(x=v1, y=v2, label=varnames), size = 5, vjust=1, color="red")
+    plot <- plot + geom_segment(data=datapc, aes(x=0, y=0, xend=v1, yend=v2), arrow=arrow(length=unit(0.2,"cm")), alpha=0.75, color="red")
+  }
+  
+  # change style and add labels for x, y axis
+  plot <- plot + theme_minimal() +  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+                                          axis.text.y = element_text(size = 10), axis.title.y = element_text(size = 16))
+  plot <- plot + labs(x = x_label, y = y_label)
+  
+  return(plot)
 }
 
 
@@ -388,14 +399,12 @@ PCbiplot <- function(PC, x="PC1", y="PC2",type="PMD",mX, rownames = 1:nrow(mX)) 
 
 ### create an scree plot
 screePlot_PCA <- create_screePlot(result_PCA, type="PMD")
-screePlot_PCA
 
 ## show how variance improves with each component added
-varPlot_PCA <- create_varPlot(result_PCA, type="PMD")
-varPlot_PCA
+varPlot_PCA <- create_varPlot(result_PCA, type="PMD", xintercept = 4)
 
-## create table of the loadings 
-create_LoadingTable(mX_attributes, result_PCA, K=5, type="PMD")
+## create table of the first 4 loadings 
+create_LoadingTable(mX_attributes, result_PCA, K=4, type="PMD", latex = TRUE)
 
 ## create biplot
 PCbiplot(result_prcomp, mX=mX_attributes, rownames=df_fifa_attributes$name)
@@ -404,21 +413,13 @@ PCbiplot(result_prcomp, mX=mX_attributes, rownames=df_fifa_attributes$name)
 
 # First, use cross validation to determine optimal penalty for sparse PCA
 result_cv <- SPC.cv(mX_attributes, sumabsvs = seq(1,sqrt(ncol(mX_attributes)), 0.5))
-result_cv
 
-result_sparse_PCA_SPC <- SPC(mX_attributes, sumabsv = 1.5, K = 29)
+# get the results of the sparse PCA
+result_sparse_PCA_SPC <- SPC(mX_attributes, sumabsv = 2, K = 29)
 
-### create an scree plot
-screePlot <- create_screePlot(result_sparse_PCA_SPC,type="SPC")
-screePlot
+## create table of the loadings for first 4 components
+create_LoadingTable(mX_attributes,result_sparse_PCA_SPC, K=4, type="SPC", latex = TRUE)
 
-## show how variance improves with each component added
-varPlot <- create_varPlot(result_sparse_PCA_SPC, type="SPC")
-varPlot
-
-## create table of the loadings 
-create_LoadingTable(mX_attributes,result_sparse_PCA_SPC, K=6, type="SPC")
-
-## create biplot
-PCbiplot(result_sparse_PCA_SPC, mX = mX_attributes,type="SPC",rownames=df_fifa_attributes$name)
-
+## create biplots for the sparse PCA
+Biplot_PC1_PC2 <- PCbiplot(result_sparse_PCA_SPC, mX = mX_attributes,type="SPC",rownames=df_fifa_attributes$name, x_label = "PC1 - 'Striker skills'", y_label = "PC2 - 'Defending skills'")
+Biplot_PC3_PC4 <- PCbiplot(result_sparse_PCA_SPC, x="PC3",y="PC4",mX = mX_attributes,type="SPC",rownames=df_fifa_attributes$name, x_label = "PC3 - 'Quick winger skills'", y_label = "PC4 - 'Aerial skills'")
