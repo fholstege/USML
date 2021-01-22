@@ -1,4 +1,9 @@
 
+# Packes required for subsequent analysis. P_load ensures these will be installed and loaded. 
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(smacof) 
+
+
 
 
 # load the data
@@ -29,13 +34,21 @@ euc_dist_M <- function(mX){
   return(result)
 }
 
+###
+#LowerT_sum: takes sum of lower triangular of a matrix
+# 
+#
+#
+LowerT_sum <- function(mX){sum(lower.tri(mX),  na.rm=T)}
 
 
 ### 
 # stand_dissim: standardizes dissimilarity matrix
+#   
+# Arguments: 
+#       mDis: nxn dissimilarity matrix
 #
-#
-#
+# Output: 
 
 stand_dissim <- function(mDis){
   
@@ -53,16 +66,25 @@ stand_dissim <- function(mDis){
 #
 
 
-calc_stress <- function(mX, mDis,mEucD){
+calc_stress <- function(mX, mDis,mEucD, normalize = TRUE){
   
+  # define X'X
   mXtX <- t(mX) %*% mX
 
   eta2 <- nrow(mX) * sum(diag((mXtX)))
   
   mBx <- calc_Bx(mDis, mEucD)
   
-  stress <- eta2 - 2* mBx
+  rho <- sum(diag(t(mX) %*% mBx %*% mX))
   
+  stress <- eta2 - 2* rho
+  
+  if(normalize){
+    
+    stress <- stress / mEucD^2
+    
+  }
+    
   return(stress)
 }
 
@@ -75,9 +97,11 @@ calc_stress <- function(mX, mDis,mEucD){
 
 calc_Bx <- function(mDis, mEucD){
   
+  # create matrix F
   mF <- mDis/mEucD
   diag(mF) <- 0
   
+  # create Bx matrix
   mBx <- diag(colSums(mF)) - mF
   
   return(mBx)
@@ -95,10 +119,16 @@ SMACOF <- function(mDis, mX = "random", eps = 0.0000005){
   
   # set n and k 
   n = nrow(mDis)
+  p = 2
   k = 0 
   
-  # create initial random matrix with dimension nx2 
-  mZ <-matrix(rexp(n*2, rate=.1), ncol=2)
+  if(mX == "random"){
+    # create initial random matrix with dimension nx2 
+    mZ <-matrix(rexp(n*p, rate=.1), ncol=p)
+  }else{
+    
+    mZ <- mX
+  }
 
   # get initial euclidean distances
   mEucDZ <- euc_dist_M(mZ)
@@ -108,7 +138,7 @@ SMACOF <- function(mDis, mX = "random", eps = 0.0000005){
   
   # intiialize variables to store previous stress and current stress
   stress_prev <- 0
-  stress_k <- sum(calc_stress(mZ, mDis,mEucDZ), na.rm=T)
+  stress_k <- LowerT_sum(calc_stress(mZ, mDis,mEucDZ))
   
   # initialize while loop 
   while(k == 0 | stress_prev - stress_k > eps){
@@ -118,7 +148,6 @@ SMACOF <- function(mDis, mX = "random", eps = 0.0000005){
     
     # update mX_k 
     mX_k <- (1/n) * mBz %*% mZ
-
 
     # update Z and the euclidean distance of Z
     mZ <- mX_k
@@ -135,8 +164,25 @@ SMACOF <- function(mDis, mX = "random", eps = 0.0000005){
   }
 }
 
+
+# Create dissimilarity matrix
+df <- 1-basket/diag(as.matrix(basket))
+
+# labels 
+labels <- colnames(basket)
 mDis_stand <- stand_dissim(as.matrix(basket))
 nrow(mDis_stand)
 
-SMACOF(mDis_stand)
+# obtain initial configeration using classical torgerson
+mX_0 <- mds(df, ndim=2, itmax=1, eps=1-06)
+
+# package results
+pack.result <- mds(df, itmax = 10000000, init='torgerson', eps=1e-06)
+pack.result$stress
+pack.result$conf
+pack.result$niter
+
+mX_0$conf
+
+SMACOF(mDis_stand, mX = "random")
 
