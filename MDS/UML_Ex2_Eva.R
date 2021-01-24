@@ -49,28 +49,9 @@ create.dissim <- function(x){
   return(x)
 }
 
-# Ordinal transformation of dissimilarities
-ord.transform <- function(x) {
-  
-  # initialize new matrix of ranks
-  ord.mat <- matrix(0L, nrow=nrow(x), ncol=ncol(x))
-  
-  # replace upper and lower matrix with rank values
-  ord.mat[lower.tri(ord.mat, diag = FALSE)] <- rank(x[lower.tri(x, diag = FALSE)])
-  ord.mat[upper.tri(ord.mat, diag = FALSE)] <- rank(x[upper.tri(x, diag = FALSE)])
-  
-  # ensure values are integers
-  ord.mat <- mapply(ord.mat, FUN=as.integer)
-  ord.mat <- matrix(data=ord.mat, ncol=ncol(x), nrow=nrow(x))
-  
-  return(ord.mat)
-}
-
 # obtain dissimilarities
 dissim <- create.dissim(as.matrix(basket))
 
-# obtain ordinal dissimilarities
-ord.dissim <- ord.transform(dissim)
 
 ################################################################################
 # Predefined functions
@@ -80,10 +61,11 @@ ord.dissim <- ord.transform(dissim)
 dist <- function(X) {
    
   n <- nrow(X)
-  ED <- matrix(, n, n)
   X.tX <- X%*%t(X)
   c <- diag(X.tX)
   prod <- outer(c,c,"+") - 2*X.tX
+  
+  ED <- matrix(, n, n)
   for(i in 1:n){
     for(j in 1:n){
       ED[i,j] = sqrt(prod[i,j])
@@ -98,7 +80,7 @@ lower.tri.sum <- function(x) {
 }
 
 # Obtain B matrix
-get.B <- function(x) {
+get.B <- function(x, dissim) {
   n <- nrow(x)
   F <- matrix(0L, nrow = n, ncol = n)
   ED <- dist(x)
@@ -128,7 +110,7 @@ squared.mat <- function(x) {
   return(sq.mat)
 }
 
-# Calculate (normalized) stress value
+# Calculate (normalized) stress
 get.stress <- function(dissim, X, tX.X, B) {
   n <- nrow(X)
   cons <- lower.tri.sum(squared.mat(dissim))
@@ -138,7 +120,6 @@ get.stress <- function(dissim, X, tX.X, B) {
   norm.stress <- raw.stress/cons
   return(norm.stress)
 }
-
 
 ################################################################################
 # Smacof algorithm
@@ -155,7 +136,6 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
   } else {
     X <- config
   }
-  print(X)
   
   # Set Z to be equal to the initial configuration
   Z <- list(X)
@@ -164,7 +144,7 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
   DZ <- dist(X)
   
   # Get initial B
-  BZ <- get.B(X)
+  BZ <- get.B(X, dissim)
   
   # Pre-calculate stress value
   stress <- c(0)
@@ -178,18 +158,23 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
     k <- k+1
     
     # Update X
-    X <- (1/n)*BZ%*%Z[[k-1]]
+    #nn <- -1/n
+    #print(nn)
+    #nx <- as.numeric(solve(1+nn)-nn)
+    #print(nx)
+    nx <- n
+    X <- (1/nx)*BZ%*%Z[[k-1]]
     Z <- list.append(Z,X)
     
     # Obtain new distances
     DZ <- dist(Z[[k]])
     
     # Calculate updated B
-    BZ <- get.B(Z[[k]])
+    BZ <- get.B(Z[[k]], dissim)
     
     # Compute updated stress
     stress <- c(stress, get.stress(dissim, Z[[k]], t(Z[[k]])%*%Z[[k]], BZ))
-  
+    
     # Check whether stress goes down
     if (stress[k+1]-stress[k] > 0) {
       cat('\n\nSomething goes wrong! Stress is increasing by ', stress[k+1]-stress[k])
@@ -231,6 +216,22 @@ pack.result$stress
 pack.result$conf
 pack.result$niter
 
+# Random check
+own.random.result <- SMACOF(dissim, eps=1e-06) 
+pack.random.result <- mds(dissim, itmax = 1000, init='random', eps=1e-06)
+pack.random.result$stress
+  
+# plot of own results
+own.config <- data.frame(own.result$conf)
+rownames(own.config) <- labels
+own.plot <- ggplot(data = own.config, aes(x = D1, y = D2))+
+  geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
+  ylab("") + xlab("") + theme_bw() + 
+  coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
+  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+print(own.plot)
+ggsave(own.plot,filename='Plots/own_plot.png',width=8, height=8)
+
 # plot of package results
 pack.config <- data.frame(pack.result$conf)
 rownames(pack.config) <- labels
@@ -244,10 +245,8 @@ ggsave(pack.plot,filename='Plots/package_plot.png',width=8, height=8)
 
 ### Ordinal MDS
 
-# own function
-
 # package results
-pack.ord.result <- mds(df, itmax = 1000, init='torgerson', type = 'ordinal', eps=1e-06)
+pack.ord.result <- mds(dissim, itmax = 1000, init=initial.conf, type = 'ordinal', eps=1e-06)
 pack.ord.result$stress
 pack.ord.result$conf
 pack.ord.result$niter
@@ -262,4 +261,5 @@ pack.plot <- ggplot(data = pack.ord.config, aes(x = D1, y = D2))+
   geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
 print(pack.plot)
 ggsave(pack.plot,filename='Plots/package_ord_plot.png',width=8, height=8)
+
 
