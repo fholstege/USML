@@ -31,11 +31,46 @@ set.seed(42)
 # Data prep
 ################################################################################
 
-# Create dissimilarity matrix
-dissim <- 1-basket/diag(as.matrix(basket))
-
 # labels 
 labels <- colnames(basket)
+
+# Create dissimilarity matrix
+create.dissim <- function(x){
+  
+  # scale similarities (covariances -> correlations)
+  x <- solve(diag(sqrt(diag(x)))) %*% x %*% solve(diag(sqrt(diag(x))))
+  
+  # obtain dissimilarities from scaled similarities
+  x <- 1-x 
+  
+  # make sure diagonal is exactly 0 (not rounded)
+  diag(x) <- 0
+  
+  return(x)
+}
+
+# Ordinal transformation of dissimilarities
+ord.transform <- function(x) {
+  
+  # initialize new matrix of ranks
+  ord.mat <- matrix(0L, nrow=nrow(x), ncol=ncol(x))
+  
+  # replace upper and lower matrix with rank values
+  ord.mat[lower.tri(ord.mat, diag = FALSE)] <- rank(x[lower.tri(x, diag = FALSE)])
+  ord.mat[upper.tri(ord.mat, diag = FALSE)] <- rank(x[upper.tri(x, diag = FALSE)])
+  
+  # ensure values are integers
+  ord.mat <- mapply(ord.mat, FUN=as.integer)
+  ord.mat <- matrix(data=ord.mat, ncol=ncol(x), nrow=nrow(x))
+  
+  return(ord.mat)
+}
+
+# obtain dissimilarities
+dissim <- create.dissim(as.matrix(basket))
+
+# obtain ordinal dissimilarities
+ord.dissim <- ord.transform(dissim)
 
 ################################################################################
 # Predefined functions
