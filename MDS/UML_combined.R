@@ -1,5 +1,5 @@
 #################
-# Authors: Floris Holstege, Yuchou Peng, Chao Liang, Eva Mynott, Gabrielle Mignoli
+# Authors: Floris Holstege, Yuchou Peng, Chao Liang, Eva Mynott, Gabriele Mingoli
 # Purpose: Code & Text for Unsupervised Machine Learning Assignment 2 - applying MDS to a basket of co-purchased goods
 # Sections: 
 #           A) Load packages and data
@@ -44,10 +44,7 @@ set.seed(123)
 #
 calc_mDis <- function(mX){
   
-  # scale similarities (covariances -> correlations)
-  
-  
-  # scale similarities (turn into correlations)
+ # scale similarities (turn into correlations)
   mX_cor <- cor(mX)
   
   # obtain dissimilarities from scaled similarities
@@ -104,17 +101,6 @@ euc_dist_M <- function(mX){
   return(result)
 }
 
-###
-# UpperT_sum: takes sum of lower triangular of a matrix
-# 
-# Arguments: 
-#     mX: matrix 
-#
-# Output:
-#     constant, sum of lower triangular 
-# 
-UpperT_sum <- function(mX){sum(upper.tri(mX), diag = FALSE)}
-
 
 ### 
 # calc_mB: calculates matrix B
@@ -138,6 +124,7 @@ calc_mB <- function(mDis, mEucD){
   return(mBx)
 }
 
+
 ### calc_stress: Calculate normalized stress value
 #
 # Arguments; 
@@ -149,9 +136,9 @@ calc_mB <- function(mDis, mEucD){
 #   Output:
 #      stress: float, normalized stress
 #     
-calc_stress <- function(mDis, mX, tX.X, mB, normalized=TRUE) {
+calc_stress <- function(mDis, mX, tX.X, mB) {
   
-  # n of variables in 
+  # number of variables
   n <- nrow(mX)
   
   # constant eta, eta squared and rho make up the raw stress
@@ -160,10 +147,13 @@ calc_stress <- function(mDis, mX, tX.X, mB, normalized=TRUE) {
   rho <- sum(diag(t(mX) %*% mB %*% mX))
   
   # calculate raw stress
-  raw_stress <- cons + Eta2 - 2*rho
+  raw_stress.sq <- cons + Eta2 - 2*rho
 
-  # normalize the stress and return 
-  stress <- sqrt(raw_stress/cons)
+  # Obtain normalized stress (squared) from raw stress
+  norm.stress.sq <- raw.stress.sq/cons
+  
+  # Take the square root to obtain final stress
+  stress <- sqrt(norm.stress.sq)
 
   return(stress)
 }
@@ -183,13 +173,12 @@ create_coordinate_plot <- function(result_MDS){
   dfResult <- data.frame(result_MDS$conf)
   rownames(dfResult) <- labels
   coordinate_plot <- ggplot(data = dfResult, aes(x = D1, y = D2))+
-    geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
+    geom_point(size = 2) + ggtitle('MDS co-purchases') + 
     ylab("") + xlab("") + theme_bw() + 
     coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
-    geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+    geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=5)
   
   return(coordinate_plot)
-  
 }
 
 
@@ -230,8 +219,7 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
   mBZ <- calc_mB(mDis, mDZ)
   
   # Pre-calculate stress value
-  stress <- c(0)
-  stress <- c(stress,calc_stress(mDis, mX, t(mX)%*%mX, mBZ))
+  stress <- c(0,calc_stress(mDis, mX, t(mX)%*%mX, mBZ))
   
   # Initialize counter
   k <- 1
@@ -259,13 +247,6 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
     }
     
   } # End loop
-  
-  cat('\n\nIterations:', k) # Total number of iterations
-  
-  # Output a final stress and configuration
-  cat('\n\nFinal stress:', stress[k])
-  cat('\n\nFinal configuration:\n')
-  print(data.frame(mZ[[k]]))
   
   # return list with results
   output <- list(conf = data.frame(mZ[[k]]), stress = stress[k], niter = k)
@@ -303,7 +284,7 @@ own.result$niter
 ### Why this difference?  There are differences in
 
 # package results
-pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06, verbose = TRUE)
+pack.result <- mds(mDis, init=initial_conf, eps=1e-06)
 pack.result$stress
 pack.result$conf
 pack.result$niter
@@ -312,12 +293,10 @@ pack.result$niter
 create_coordinate_plot(own.result)
 create_coordinate_plot(pack.result)
 
-
 ### E) The ordinal solution finds a much more 'clustered' solution - the products are often much closer or further away from each other, 
 # instead of an roughly equal distance in the previous implemenation. This is likely because of our first dissimilarity matrix has many similar values (range of 0.6-0.8)
 # but in the ordinal dissimilarity matrix, the differences become bigger, since its only considered with the relative rank
 
 # check the ordinal result
-pack.result_ord <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06,  type = 'ordinal')
+pack.result_ord <- mds(mDis, init=initial_conf, eps=1e-06,  type = 'ordinal')
 create_coordinate_plot(pack.result_ord)
-
