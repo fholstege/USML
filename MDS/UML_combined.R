@@ -20,7 +20,8 @@ rm(list=ls())
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(smacof,
                ggplot2,
-               rlist) 
+               rlist,
+               fBasics) 
 
 # load the data
 load("Data/basket.Rdata")
@@ -145,12 +146,13 @@ calc_mB <- function(mDis, mEucD){
 #   Output:
 #      stress: float, normalized stress
 #     
-calc_stress <- function(mDis, X, tX.X, B, normalized=TRUE) {
+calc_stress <- function(mDis, mX, tX.X, mB, normalized=TRUE) {
   
   # n of variables in 
-  n <- nrow(X)
+  n <- nrow(mX)
   
   # constant eta, eta squared and rho make up the raw stress
+  Eta <- (sum(lower.tri(mDis, diag = FALSE) * (mDis ^ 2 )))
   Eta <- UpperT_sum(mDis^2)
   Eta2 <- n*sum(diag(tX.X))
   rho <- sum(diag(t(X) %*% B %*% X))
