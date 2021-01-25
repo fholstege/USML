@@ -58,6 +58,30 @@ calc_mDis <- function(mX){
 }
 
 
+### calc_mDis_Ord: Turn dissimilarities to ordinal dissimilarities 
+# 
+# Arguments:
+#     mDis: nxn dissimilarity matrix 
+# Output:
+#     mDis_ord: nxn dissimilarity matrix, iwith ordinal rank
+#
+calc_mDis_Ord <- function(mDis) {
+  
+  # initialize new matrix of ranks
+  mOrd <- matrix(0L, nrow=nrow(mDis), ncol=ncol(mDis))
+  
+  # replace upper and lower matrix with rank values
+  mOrd[lower.tri(mOrd, diag = FALSE)] <- rank(mDis[lower.tri(mDis, diag = FALSE)])
+  mOrd[upper.tri(mOrd, diag = FALSE)] <- rank(mDis[upper.tri(mDis, diag = FALSE)])
+  
+  # ensure values are integers
+  mDis_ord <- mapply(mOrd, FUN=as.integer)
+  mDis_ord <- matrix(data=mOrd, ncol=ncol(mDis), nrow=nrow(mDis))
+  
+  return(mDis_ord)
+}
+
+
 
 ###
 # euc_dist_M: calculates euclidean distance of an nxp matrix for each row with all other rows
@@ -115,7 +139,6 @@ calc_mB <- function(mDis, mEucD){
 }
 
 
-View(mds)
 
 ### calc_stress: Calculate (normalized) stress value
 #
@@ -215,13 +238,32 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
   
   cat('\n\nIterations:', k) # Total number of iterations
   
-  # Output a list containing the results
+  # Output a final stress and configuration
   cat('\n\nFinal stress:', stress[k])
   cat('\n\nFinal configuration:\n')
   print(data.frame(Z[[k]]))
+  
+  # return list with results
   output <- list(conf = data.frame(Z[[k]]), stress = stress[k], niter = k)
   
   return(output)
+}
+
+
+create_coordinate_plot <- function(result_MDS){
+  
+  
+  # plot of package results
+  dfResult <- data.frame(result_MDS$conf)
+  rownames(dfResult) <- labels
+  coordinate_plot <- ggplot(data = dfResult, aes(x = D1, y = D2))+
+    geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
+    ylab("") + xlab("") + theme_bw() + 
+    coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
+    geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+  
+  return(coordinate_plot)
+  
 }
 
 
@@ -232,31 +274,32 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
 
 labels <- colnames(basket)
 mDis <- calc_mDis(as.matrix(basket))
+mDis_Ord <- calc_mDis_Ord(mDis)
 
-# obtain initial configeration using classical torgerson
+# obtain initial configeration using torgerson algorithm
 initial <- mds(mDis, init='torgerson', itmax=1)
-initial.conf <- initial$conf
+initial_conf <- initial$conf
 
-# own implementation
-own.result <- SMACOF(mDis, config = initial.conf, eps=1e-6) 
+
+# own implementation, with initial configuration
+own.result <- SMACOF(mDis, config = initial_conf, eps=1e-6) 
 own.result$stress
 own.result$conf
 own.result$niter
 
+
 # package results
-pack.result <- mds(mDis, itmax = 1000, init=initial.conf, eps=1e-06)
+pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06)
 pack.result$stress
 pack.result$conf
 pack.result$niter
 
-# plot of package results
-pack.config <- data.frame(pack.result$conf)
-rownames(pack.config) <- labels
-pack.plot <- ggplot(data = pack.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
-  ylab("") + xlab("") + theme_bw() + 
-  coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
-  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
-print(pack.plot)
-ggsave(pack.plot,filename='Plots/package_plot.png',width=8, height=8)
+# plots of both implementations
+create_coordinate_plot(own.result)
+create_coordinate_plot(pack.result)
+
+
+# check the ordinal result
+pack.result_ord <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06,  type = 'ordinal')
+create_coordinate_plot(pack.result_ord)
 
