@@ -1,17 +1,16 @@
 #################
 # Authors: Floris Holstege, Yuchou Peng, Chao Liang, Eva Mynott, Gabrielle Mignoli
-# Purpose: Code for Unsupervised Machine Learning Assignment 2 - applying MDS to a basket of co-purchased goods
+# Purpose: Code & Text for Unsupervised Machine Learning Assignment 2 - applying MDS to a basket of co-purchased goods
 # Sections: 
-#           A) Load packages and pre-process the data
-#           B) Define our functions for MDS
+#           A) Load packages and data
+#           B) Define our functions for SMACOF + dissimilarity matrix + visualization
 #           C) Implementation SMACOF algorithm
-#           D) Compare our implementation with package
+#           D) Explicit answers to questions in the exercise 
 #################
 
 
-
 ################################################################################
-# A) Load packages and pre-process the data
+# A) Load packages
 ################################################################################
 
 # empty global environment
@@ -31,7 +30,7 @@ set.seed(123)
 
 
 ################################################################################
-# B) Define our functions for MDS
+# B) Define our functions for SMACOF + dissimilarity matrix + visualization
 ################################################################################
 
 
@@ -42,7 +41,6 @@ set.seed(123)
 # Output:
 #     mDis: nxn dissimilarity matrix
 #
-
 calc_mDis <- function(mX){
   
   # scale similarities (covariances -> correlations)
@@ -82,7 +80,6 @@ calc_mDis_Ord <- function(mDis) {
 }
 
 
-
 ###
 # euc_dist_M: calculates euclidean distance of an nxp matrix for each row with all other rows
 #
@@ -91,7 +88,6 @@ calc_mDis_Ord <- function(mDis) {
 # 
 # Output: 
 #       result: nxn matrix of euclidean distances
-
 euc_dist_M <- function(mX){
   
   # define M as XX', and C as diag(M)
@@ -105,7 +101,7 @@ euc_dist_M <- function(mX){
 }
 
 ###
-# LowerT_sum: takes sum of lower triangular of a matrix
+# UpperT_sum: takes sum of lower triangular of a matrix
 # 
 # Arguments: 
 #     mX: matrix 
@@ -113,7 +109,7 @@ euc_dist_M <- function(mX){
 # Output:
 #     constant, sum of lower triangular 
 # 
-LowerT_sum <- function(mX){sum(lower.tri(mX), diag = FALSE)}
+UpperT_sum <- function(mX){sum(upper.tri(mX), diag = FALSE)}
 
 
 ### 
@@ -125,7 +121,7 @@ LowerT_sum <- function(mX){sum(lower.tri(mX), diag = FALSE)}
 # 
 # Output:
 #     mBx: nxn matrix B, used for calculating stress
-# 
+#
 calc_mB <- function(mDis, mEucD){
   
   # create matrix F
@@ -138,122 +134,48 @@ calc_mB <- function(mDis, mEucD){
   return(mBx)
 }
 
-
-
-### calc_stress: Calculate (normalized) stress value
+### calc_stress: Calculate normalized stress value
 #
 # Arguments; 
 #     mDis: nxn dissimilarity matrix
-#     X: 
-#     tX.X:
-#     B
-#     normalized: boolean, if true then normalize stress
+#     X: nxp input matrix
+#     tX.X: X'X, pxp matrix
+#     B: matrix B, calculated with calc_mB
 # 
 #   Output:
-#      stress: variable with raw or normalized stress
+#      stress: float, normalized stress
 #     
-
-
 calc_stress <- function(mDis, X, tX.X, B, normalized=TRUE) {
   
   # n of variables in 
   n <- nrow(X)
   
   # constant eta, eta squared and rho make up the raw stress
-  Eta <- LowerT_sum(mDis^2)
+  Eta <- UpperT_sum(mDis^2)
   Eta2 <- n*sum(diag(tX.X))
   rho <- sum(diag(t(X) %*% B %*% X))
   
   # calculate raw stress
-  raw.stress <- Eta + Eta2 - 2*rho
+  raw_stress <- Eta + Eta2 - 2*rho
 
-  if(normalized){
-    
-    # normalize the raw stress 
-    norm.stress <- raw.stress/Eta
-    stress <- norm.stress
-    
-  }else{
-    stress <- raw.stress
-  }
+  # normalize the stress and return 
+  stress <- raw_stress/Eta
+
   return(stress)
 }
 
 
-################################################################################
-# C) Smacof algorithm
-################################################################################
-
-SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
-  
-  # Number of variables
-  n <- nrow(mDis)
-  
-  # Use random or initial Torgerson configuration
-  if (is.null(config) == T) {
-    X <- matrix(data = rnorm(n*2,), nrow = n, ncol = 2)
-  } else {
-    X <- config
-  }
-
-  # Set Z to be equal to the initial configuration
-  Z <- list(X)
-  
-  # Get initial euclidean distance
-  DZ <- euc_dist_M(X)
-
-  # Get initial B
-  BZ <- calc_mB(mDis, DZ)
-  
-  # Pre-calculate stress value
-  stress <- c(0)
-  stress <- c(stress,calc_stress(mDis, X, t(X)%*%X, BZ))
-  
-  # Initialize counter
-  k <- 1
-  
-  # Start loop
-  while (k == 1 | stress[k]-stress[k+1] > eps){
-    k <- k+1
-    
-    # Update X
-    X <- (1/n) * BZ %*% Z[[k-1]]
-    Z <- list.append(Z,X)
-    
-    # Obtain new distances
-    DZ <- euc_dist_M(Z[[k]])
-    
-    # Calculate updated B
-    BZ <- calc_mB(mDis, DZ)
-    
-    # Compute updated stress
-    stress <- c(stress, calc_stress(mDis, Z[[k]], t(Z[[k]])%*%Z[[k]], BZ))
-    
-    # Check whether stress goes down
-    if (stress[k+1]-stress[k] > 0) {
-      cat('\n\nSomething goes wrong! Stress is increasing by ', stress[k+1]-stress[k])
-    }
-    
-  } # End loop
-  
-  cat('\n\nIterations:', k) # Total number of iterations
-  
-  # Output a final stress and configuration
-  cat('\n\nFinal stress:', stress[k])
-  cat('\n\nFinal configuration:\n')
-  print(data.frame(Z[[k]]))
-  
-  # return list with results
-  output <- list(conf = data.frame(Z[[k]]), stress = stress[k], niter = k)
-  
-  return(output)
-}
-
-
+### create_coordinate_plot: creates plot of coordinates from MDS result
+#
+# Arguments; 
+#     result_MDS: result object from mds() function or SMACOF, with conf attribute
+#
+#   Output:
+#      coordinate_plot: ggplot object with MDS coordinates
+#     
 create_coordinate_plot <- function(result_MDS){
   
-  
-  # plot of package results
+  # plot of mds results
   dfResult <- data.frame(result_MDS$conf)
   rownames(dfResult) <- labels
   coordinate_plot <- ggplot(data = dfResult, aes(x = D1, y = D2))+
@@ -268,18 +190,104 @@ create_coordinate_plot <- function(result_MDS){
 
 
 ################################################################################
-# D) Compare our implementation with package
+# C) Smacof algorithm
 ################################################################################
 
 
+### SMACOF: implements SMACOF algorithm to a dissimilarity matrix
+#
+# Arguments; 
+#     mDis: nxn dissimilarity matrix
+#    
+#   Output:
+#      output: list, with final configuration, n of iterations, and stress of final configuration
+#  
+
+SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
+  
+  # Number of variables
+  n <- nrow(mDis)
+  p <- 2
+  
+  # Use random or initial Torgerson configuration
+  if (is.null(config) == T) {
+    mX<- matrix(data = rnorm(n*p,), nrow = n, ncol = p)
+  } else {
+    mX<- config
+  }
+
+  # Set Z to be equal to the initial configuration
+  mZ <- list(mX)
+  
+  # Get initial euclidean distance
+  mDZ <- euc_dist_M(mX)
+
+  # Get initial B
+  mBZ <- calc_mB(mDis, mDZ)
+  
+  # Pre-calculate stress value
+  stress <- c(0)
+  stress <- c(stress,calc_stress(mDis, mX, t(mX)%*%mX, mBZ))
+  
+  # Initialize counter
+  k <- 1
+  
+  # Start loop
+  while (k == 1 | stress[k]-stress[k+1] > eps){
+    k <- k+1
+    
+    # Update X
+    mX<- (1/n) * mBZ %*% mZ[[k-1]]
+    mZ <- list.append(mZ,mX)
+    
+    # Obtain new distances
+    mDZ <- euc_dist_M(mZ[[k]])
+    
+    # Calculate updated B
+    mBZ <- calc_mB(mDis, mDZ)
+    
+    # Compute updated stress
+    stress <- c(stress, calc_stress(mDis, mZ[[k]], t(mZ[[k]]) %*% mZ[[k]], mBZ))
+    
+    # Check whether stress goes down
+    if (stress[k+1]-stress[k] > 0) {
+      cat('\n\nSomething goes wrong! Stress is increasing by ', stress[k+1]-stress[k])
+    }
+    
+  } # End loop
+  
+  cat('\n\nIterations:', k) # Total number of iterations
+  
+  # Output a final stress and configuration
+  cat('\n\nFinal stress:', stress[k])
+  cat('\n\nFinal configuration:\n')
+  print(data.frame(mZ[[k]]))
+  
+  # return list with results
+  output <- list(conf = data.frame(mZ[[k]]), stress = stress[k], niter = k)
+  
+  return(output)
+}
+
+
+################################################################################
+# D) Explicit answers to questions in the exercise 
+################################################################################
+
+### A) 
+
+# create dissimilarity matrix and ordinal dissimilarity matrix
 labels <- colnames(basket)
 mDis <- calc_mDis(as.matrix(basket))
 mDis_Ord <- calc_mDis_Ord(mDis)
 
+### B) The function for the euclidean distance matrix is euc_dist_M, found in line 83-100
+
+### C) see the SMACOF() function for our implemenation, section C of the code. We implement it below a
+
 # obtain initial configeration using torgerson algorithm
 initial <- mds(mDis, init='torgerson', itmax=1)
 initial_conf <- initial$conf
-
 
 # own implementation, with initial configuration
 own.result <- SMACOF(mDis, config = initial_conf, eps=1e-6) 
@@ -287,6 +295,8 @@ own.result$stress
 own.result$conf
 own.result$niter
 
+### D)  There is a difference of 0.083 between our implemenation and the package in terms of raw stress
+### Why this difference? 1/n = 1/12 = 0.083 - so likely we are somewhere not scaling the stress accurately, which influences our configuration
 
 # package results
 pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06)
@@ -298,6 +308,9 @@ pack.result$niter
 create_coordinate_plot(own.result)
 create_coordinate_plot(pack.result)
 
+### E) The ordinal solution finds a much more 'clustered' solution - the products are often much closer or further away from each other, 
+# instead of an roughly equal distance in the previous implemenation. This is likely because of our first dissimilarity matrix has many similar values (range of 0.6-0.8)
+# but in the ordinal dissimilarity matrix, the differences become bigger, since its only considered with the relative rank
 
 # check the ordinal result
 pack.result_ord <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06,  type = 'ordinal')
