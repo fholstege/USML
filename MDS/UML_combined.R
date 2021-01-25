@@ -147,13 +147,13 @@ calc_stress <- function(mDis, mX, tX.X, mB) {
   rho <- sum(diag(t(mX) %*% mB %*% mX))
   
   # calculate raw stress
-  raw_stress.sq <- cons + Eta2 - 2*rho
+  raw_stress_sq <- cons + Eta2 - 2*rho
 
   # Obtain normalized stress (squared) from raw stress
-  norm.stress.sq <- raw.stress.sq/cons
+  norm_stress_sq <- raw_stress_sq/cons
   
   # Take the square root to obtain final stress
-  stress <- sqrt(norm.stress.sq)
+  stress <- sqrt(norm_stress_sq)
 
   return(stress)
 }
@@ -167,13 +167,15 @@ calc_stress <- function(mDis, mX, tX.X, mB) {
 #   Output:
 #      coordinate_plot: ggplot object with MDS coordinates
 #     
-create_coordinate_plot <- function(result_MDS){
+create_coordinate_plot <- function(result_MDS, title, labels){
   
-  # plot of mds results
+  # create dataframe for visualization
   dfResult <- data.frame(result_MDS$conf)
   rownames(dfResult) <- labels
+  
+  # define the plot
   coordinate_plot <- ggplot(data = dfResult, aes(x = D1, y = D2))+
-    geom_point(size = 2) + ggtitle('MDS co-purchases') + 
+    geom_point(size = 2) + ggtitle(title) + 
     ylab("") + xlab("") + theme_bw() + 
     coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
     geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=5)
@@ -290,8 +292,26 @@ pack.result$conf
 pack.result$niter
 
 # plots of both implementations
-create_coordinate_plot(own.result)
-create_coordinate_plot(pack.result)
+create_coordinate_plot(own.result, "Multidimensional scaling (own implementation): product co-purchases", labels)
+create_coordinate_plot(pack.result,"Multidimensional scaling (Package): product co-purchases", labels)
+
+### comparison plot of own implementation and package results
+# quickly create dataframes for plot
+pack.config <- data.frame(pack.result$conf)
+rownames(pack.config) <- labels
+own.config <- data.frame(own.result$conf)
+rownames(own.config) <- labels
+
+# define comparison plot
+compare_plot <- ggplot(data = pack.config, aes(x = D1, y = D2)) + 
+  geom_point(aes(colour="R Package"), size = 2, fill="blue") +
+  geom_point(data = own.config, aes(colour="Own implementation"), size=2) +
+  labs(x = "", y = "", colour = "")+
+  ggtitle('Multidimensional scaling (comparison): product co-purchases') + 
+  theme_bw() + theme(legend.position="bottom", plot.title = element_text(size=16), legend.text = element_text(size=14)) + 
+  coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1))+
+  geom_text(label=labels, hjust=0.3, vjust=1.3, size=5)
+compare_plot
 
 ### E) The ordinal solution finds a much more 'clustered' solution - the products are often much closer or further away from each other, 
 # instead of an roughly equal distance in the previous implemenation. This is likely because of our first dissimilarity matrix has many similar values (range of 0.6-0.8)
