@@ -45,10 +45,13 @@ set.seed(123)
 calc_mDis <- function(mX){
   
   # scale similarities (covariances -> correlations)
-  mX_transformed <- solve(diag(sqrt(diag(mX)))) %*% mX %*% solve(diag(sqrt(diag(mX))))
+  
+  
+  # scale similarities (turn into correlations)
+  mX_cor <- cor(mX)
   
   # obtain dissimilarities from scaled similarities
-  mDis <- 1-mX_transformed 
+  mDis <- 1-mX_cor 
   
   # make sure diagonal is exactly 0 (not rounded)
   diag(mDis) <- 0
@@ -152,16 +155,15 @@ calc_stress <- function(mDis, mX, tX.X, mB, normalized=TRUE) {
   n <- nrow(mX)
   
   # constant eta, eta squared and rho make up the raw stress
-  Eta <- (sum(lower.tri(mDis, diag = FALSE) * (mDis ^ 2 )))
-  Eta <- UpperT_sum(mDis^2)
+  cons <- sum(upper.tri(mDis, diag = FALSE)*(mDis^2))
   Eta2 <- n*sum(diag(tX.X))
-  rho <- sum(diag(t(X) %*% B %*% X))
+  rho <- sum(diag(t(mX) %*% mB %*% mX))
   
   # calculate raw stress
-  raw_stress <- Eta + Eta2 - 2*rho
+  raw_stress <- cons + Eta2 - 2*rho
 
   # normalize the stress and return 
-  stress <- raw_stress/Eta
+  stress <- sqrt(raw_stress/UpperT_sum(mDis^2))
 
   return(stress)
 }
@@ -301,7 +303,7 @@ own.result$niter
 ### Why this difference? 1/n = 1/12 = 0.083 - so likely we are somewhere not scaling the stress accurately, which influences our configuration
 
 # package results
-pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06)
+pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06, verbose = TRUE)
 pack.result$stress
 pack.result$conf
 pack.result$niter
@@ -309,6 +311,8 @@ pack.result$niter
 # plots of both implementations
 create_coordinate_plot(own.result)
 create_coordinate_plot(pack.result)
+
+getwd()
 
 ### E) The ordinal solution finds a much more 'clustered' solution - the products are often much closer or further away from each other, 
 # instead of an roughly equal distance in the previous implemenation. This is likely because of our first dissimilarity matrix has many similar values (range of 0.6-0.8)
