@@ -163,7 +163,7 @@ calc_stress <- function(mDis, mX, tX.X, mB, normalized=TRUE) {
   raw_stress <- cons + Eta2 - 2*rho
 
   # normalize the stress and return 
-  stress <- sqrt(raw_stress/UpperT_sum(mDis^2))
+  stress <- sqrt(raw_stress/cons)
 
   return(stress)
 }
@@ -299,8 +299,8 @@ own.result$stress
 own.result$conf
 own.result$niter
 
-### D)  There is a difference of 0.083 between our implemenation and the package in terms of raw stress
-### Why this difference? 1/n = 1/12 = 0.083 - so likely we are somewhere not scaling the stress accurately, which influences our configuration
+### D)  There is a difference of 0.05 between our implemenation and the package in terms of raw stress
+### Why this difference?  There are differences in
 
 # package results
 pack.result <- mds(mDis, itmax = 1000, init=initial_conf, eps=1e-06, verbose = TRUE)
@@ -312,7 +312,6 @@ pack.result$niter
 create_coordinate_plot(own.result)
 create_coordinate_plot(pack.result)
 
-getwd()
 
 ### E) The ordinal solution finds a much more 'clustered' solution - the products are often much closer or further away from each other, 
 # instead of an roughly equal distance in the previous implemenation. This is likely because of our first dissimilarity matrix has many similar values (range of 0.6-0.8)
