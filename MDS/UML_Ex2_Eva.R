@@ -37,9 +37,9 @@ labels <- colnames(basket)
 # Create dissimilarity matrix
 create.dissim <- function(x){
   
-  # scale similarities (covariances -> correlations)
-  x <- solve(diag(sqrt(diag(x)))) %*% x %*% solve(diag(sqrt(diag(x))))
-  
+  # scale similarities (turn into correlations)
+  x <- cor(x)
+
   # obtain dissimilarities from scaled similarities
   x <- 1-x 
   
@@ -49,8 +49,28 @@ create.dissim <- function(x){
   return(x)
 }
 
+# Ordinal transformation of dissimilarities
+ord.transform <- function(x) {
+  
+  # initialize new matrix of ranks
+  ord.mat <- matrix(0L, nrow=nrow(x), ncol=ncol(x))
+  
+  # replace upper and lower matrix with rank values
+  ord.mat[lower.tri(ord.mat, diag = FALSE)] <- rank(x[lower.tri(x, diag = FALSE)])
+  ord.mat[upper.tri(ord.mat, diag = FALSE)] <- rank(x[upper.tri(x, diag = FALSE)])
+  
+  # ensure values are integers
+  ord.mat <- mapply(ord.mat, FUN=as.integer)
+  ord.mat <- matrix(data=ord.mat, ncol=ncol(x), nrow=nrow(x))
+  
+  return(ord.mat)
+}
+
 # obtain dissimilarities
 dissim <- create.dissim(as.matrix(basket))
+
+# obtain ordinal dissimilarities (disparities)
+disparity <- ord.transform(dissim)
 
 
 ################################################################################
@@ -58,66 +78,52 @@ dissim <- create.dissim(as.matrix(basket))
 ################################################################################
 
 # Calculate Euclidean distance
-dist <- function(X) {
-   
-  n <- nrow(X)
+eu.dist <- function(X) {
+
+  # Predefine XX'
   X.tX <- X%*%t(X)
+  
+  # Calculate Euclidean distance
   c <- diag(X.tX)
   prod <- outer(c,c,"+") - 2*X.tX
+  ED <- sqrt(prod)
   
-  ED <- matrix(, n, n)
-  for(i in 1:n){
-    for(j in 1:n){
-      ED[i,j] = sqrt(prod[i,j])
-    }
-  }
   return(ED)
 }
 
-# Obtain lower triangular sum
-lower.tri.sum <- function(x) {
-  return(sum(lower.tri(x, diag = FALSE)))
-}
-
 # Obtain B matrix
-get.B <- function(x, dissim) {
-  n <- nrow(x)
-  F <- matrix(0L, nrow = n, ncol = n)
-  ED <- dist(x)
-  for(i in 1:n){
-    for(j in 1:n){
-      if (ED[i,j]!=0){
-        F[i,j] <- dissim[i,j]/ED[i,j]
-      }
-      else {
-        F[i,j] <- 0
-      }
-      }
-  }
+get.B <- function(x, dissim, ED) {
+  
+  # Define matrix F
+  F <- dissim/ED
+  diag(F) <- 0
+  
+  # Obtain matrix B from F
   F1 <- rowSums(F)
   B <- diag(F1)-F
+  
   return(B)
 }
 
-# Get squared elements of a matrix
-squared.mat <- function(x) {
-  sq.mat <- matrix(, nrow = nrow(x), ncol = ncol(x))
-  for(i in 1:nrow(x)){
-    for (j in 1:ncol(x)){
-      sq.mat[i,j] <- x[i,j]^2
-    }
-  }
-  return(sq.mat)
-}
-
 # Calculate (normalized) stress
-get.stress <- function(dissim, X, tX.X, B) {
+get.stress <- function(dissim, X, tX.X, B, ED) {
+  
   n <- nrow(X)
-  cons <- lower.tri.sum(squared.mat(dissim))
+
+  # Stress can be divided into three elements
+  cons <- sum(upper.tri(dissim, diag = FALSE)*(dissim^2))
   eta <- n*sum(diag(tX.X))
   rho <- sum(diag(t(X) %*% B %*% X))
-  raw.stress <- cons + eta - 2*rho
-  norm.stress <- raw.stress/cons
+  
+  # Calculate raw stress (squared) from the 3 elements
+  raw.stress.sq <- cons + eta - 2*rho
+  
+  # Obtain normalized stress (squared) from raw stress
+  norm.stress.sq <- raw.stress.sq/cons
+  
+  # Take the square root to obtain final stress
+  norm.stress <- sqrt(norm.stress.sq)
+  
   return(norm.stress)
 }
 
@@ -141,14 +147,13 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
   Z <- list(X)
   
   # Get initial euclidean distance
-  DZ <- dist(X)
+  DZ <- eu.dist(X)
   
   # Get initial B
-  BZ <- get.B(X, dissim)
+  BZ <- get.B(X, dissim, DZ)
   
   # Pre-calculate stress value
-  stress <- c(0)
-  stress <- c(stress,get.stress(dissim, X, t(X)%*%X, BZ))
+  stress <- c(0,get.stress(dissim, X, t(X)%*%X, BZ, DZ))
   
   # Initialize counter
   k <- 1
@@ -158,22 +163,17 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
     k <- k+1
     
     # Update X
-    #nn <- -1/n
-    #print(nn)
-    #nx <- as.numeric(solve(1+nn)-nn)
-    #print(nx)
-    nx <- n
-    X <- (1/nx)*BZ%*%Z[[k-1]]
+    X <- (1/n)*BZ%*%Z[[k-1]]
     Z <- list.append(Z,X)
     
     # Obtain new distances
-    DZ <- dist(Z[[k]])
+    DZ <- eu.dist(Z[[k]])
     
     # Calculate updated B
-    BZ <- get.B(Z[[k]], dissim)
+    BZ <- get.B(Z[[k]], dissim, DZ)
     
     # Compute updated stress
-    stress <- c(stress, get.stress(dissim, Z[[k]], t(Z[[k]])%*%Z[[k]], BZ))
+    stress <- c(stress, get.stress(dissim, Z[[k]], t(Z[[k]])%*%Z[[k]], BZ, DZ))
     
     # Check whether stress goes down
     if (stress[k+1]-stress[k] > 0) {
@@ -182,17 +182,11 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
     
   } # End loop
    
-  cat('\n\nIterations:', k) # Total number of iterations
-  
   # Output a list containing the results
-  cat('\n\nFinal stress:', stress[k])
-  cat('\n\nFinal configuration:\n')
-  print(data.frame(Z[[k]]))
   output <- list(conf = data.frame(Z[[k]]), stress = stress[k], niter = k)
   
   return(output)
 }
-
 
 ################################################################################
 # Compare implementation with package
@@ -201,7 +195,7 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
 ### Ordinary MDS
 
 # obtain initial configeration using classical torgerson
-initial <- mds(dissim, init='torgerson', itmax=1)
+initial <- mds(dissim, ndim = 2, init='torgerson', itmax=1)
 initial.conf <- initial$conf
 
 # own implementation
@@ -211,21 +205,37 @@ own.result$conf
 own.result$niter
 
 # package results
-pack.result <- mds(dissim, itmax = 1000, init=initial.conf, eps=1e-06)
+pack.result <- mds(dissim, init=initial.conf, eps=1e-06)
 pack.result$stress
 pack.result$conf
 pack.result$niter
 
-# Random check
-own.random.result <- SMACOF(dissim, eps=1e-06) 
-pack.random.result <- mds(dissim, itmax = 1000, init='random', eps=1e-06)
+### Random MDS
+
+# own implementation
+own.random.result <- SMACOF(dissim, eps=1e-06)
+own.random.result$stress
+
+# package results
+pack.random.result <- mds(dissim, init='random', eps=1e-06)
 pack.random.result$stress
   
+### Ordinal MDS
+
+# package results
+pack.ord.result <- mds(dissim, itmax = 1000, init=initial.conf, type = 'ordinal', eps=1e-06)
+pack.ord.result$stress
+pack.ord.result$conf
+pack.ord.result$niter
+
+### Plots
+
 # plot of own results
 own.config <- data.frame(own.result$conf)
 rownames(own.config) <- labels
 own.plot <- ggplot(data = own.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
+  geom_point(size = 1.5) + 
+  ggtitle('Multidimensional scaling: product co-purchases (own implementation)') + 
   ylab("") + xlab("") + theme_bw() + 
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
   geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
@@ -236,30 +246,23 @@ ggsave(own.plot,filename='Plots/own_plot.png',width=8, height=8)
 pack.config <- data.frame(pack.result$conf)
 rownames(pack.config) <- labels
 pack.plot <- ggplot(data = pack.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('MDS co-purchases') + 
+  geom_point(size = 1.5) + ggtitle('Multidimensional scaling: product co-purchases (package)') + 
   ylab("") + xlab("") + theme_bw() + 
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
   geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
 print(pack.plot)
 ggsave(pack.plot,filename='Plots/package_plot.png',width=8, height=8)
 
-### Ordinal MDS
+# comparison plot of own implementation and package results
 
-# package results
-pack.ord.result <- mds(dissim, itmax = 1000, init=initial.conf, type = 'ordinal', eps=1e-06)
-pack.ord.result$stress
-pack.ord.result$conf
-pack.ord.result$niter
 
-# plot of package results
+# plot of ordinal results
 pack.ord.config <- data.frame(pack.ord.result$conf)
 rownames(pack.ord.config) <- labels
 pack.plot <- ggplot(data = pack.ord.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('MDS co-purchases (ordinal transformation)') + 
+  geom_point(size = 1.5) + ggtitle('Multidimensional scaling (ordinal transformation): product co-purchases') + 
   ylab("") + xlab("") + theme_bw() + 
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
   geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
 print(pack.plot)
 ggsave(pack.plot,filename='Plots/package_ord_plot.png',width=8, height=8)
-
-
