@@ -4,7 +4,8 @@
 # Sections: 
 #           A) Load packages and pre-process the data
 #           B) Define our functions for MDS
-#           C) Compare our implementation with package
+#           C) Implementation SMACOF algorithm
+#           D) Compare our implementation with package
 #################
 
 
@@ -30,7 +31,7 @@ set.seed(123)
 
 
 ################################################################################
-# Predefined functions
+# B) Define our functions for MDS
 ################################################################################
 
 
@@ -114,7 +115,7 @@ calc_mB <- function(mDis, mEucD){
 }
 
 
-
+View(mds)
 
 ### calc_stress: Calculate (normalized) stress value
 #
@@ -157,7 +158,7 @@ calc_stress <- function(mDis, X, tX.X, B, normalized=TRUE) {
 
 
 ################################################################################
-# Smacof algorithm
+# C) Smacof algorithm
 ################################################################################
 
 SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
@@ -193,7 +194,7 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
     k <- k+1
     
     # Update X
-    X <- (1/n)*BZ%*%Z[[k-1]]
+    X <- (1/n) * BZ %*% Z[[k-1]]
     Z <- list.append(Z,X)
     
     # Obtain new distances
@@ -225,7 +226,7 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
 
 
 ################################################################################
-# Compare implementation with package
+# D) Compare our implementation with package
 ################################################################################
 
 
@@ -237,7 +238,7 @@ initial <- mds(mDis, init='torgerson', itmax=1)
 initial.conf <- initial$conf
 
 # own implementation
-own.result <- SMACOF(mDis, config = initial.conf, eps=1e-06) 
+own.result <- SMACOF(mDis, config = initial.conf, eps=1e-6) 
 own.result$stress
 own.result$conf
 own.result$niter
