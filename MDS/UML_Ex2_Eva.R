@@ -24,15 +24,13 @@ load("basket.RData")
 if(!require('smacof'))install.packages('smacof', quiet=T)
 if(!require('ggplot2'))install.packages('ggplot2', quiet=T)
 if(!require('rlist'))install.packages('rlist', quiet=T)
+if(!require('tidyr'))install.packages('tidyr', quiet=T)
 
 set.seed(42)
 
 ################################################################################
 # Data prep
 ################################################################################
-
-# labels 
-labels <- colnames(basket)
 
 # Create dissimilarity matrix
 create.dissim <- function(x){
@@ -65,12 +63,6 @@ ord.transform <- function(x) {
   
   return(ord.mat)
 }
-
-# obtain dissimilarities
-dissim <- create.dissim(as.matrix(basket))
-
-# obtain ordinal dissimilarities (disparities)
-disparity <- ord.transform(dissim)
 
 
 ################################################################################
@@ -192,6 +184,16 @@ SMACOF <- function(dissim, config = NULL, eps = 1e-06) {
 # Compare implementation with package
 ################################################################################
 
+# labels 
+labels <- colnames(basket)
+
+# obtain dissimilarities
+dissim <- create.dissim(as.matrix(basket))
+
+# obtain ordinal dissimilarities (disparities)
+disparity <- ord.transform(dissim)
+
+
 ### Ordinary MDS
 
 # obtain initial configeration using classical torgerson
@@ -223,7 +225,7 @@ pack.random.result$stress
 ### Ordinal MDS
 
 # package results
-pack.ord.result <- mds(dissim, itmax = 1000, init=initial.conf, type = 'ordinal', eps=1e-06)
+pack.ord.result <- mds(dissim, init=initial.conf, type = 'ordinal', eps=1e-06)
 pack.ord.result$stress
 pack.ord.result$conf
 pack.ord.result$niter
@@ -234,11 +236,11 @@ pack.ord.result$niter
 own.config <- data.frame(own.result$conf)
 rownames(own.config) <- labels
 own.plot <- ggplot(data = own.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + 
-  ggtitle('Multidimensional scaling: product co-purchases (own implementation)') + 
-  ylab("") + xlab("") + theme_bw() + 
+  geom_point(size = 2) + 
+  ggtitle('Multidimensional scaling (own implementation): product co-purchases') + 
+  ylab("") + xlab("") + theme_bw() + theme(plot.title = element_text(size=16)) +
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
-  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=5)
 print(own.plot)
 ggsave(own.plot,filename='Plots/own_plot.png',width=8, height=8)
 
@@ -246,23 +248,32 @@ ggsave(own.plot,filename='Plots/own_plot.png',width=8, height=8)
 pack.config <- data.frame(pack.result$conf)
 rownames(pack.config) <- labels
 pack.plot <- ggplot(data = pack.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('Multidimensional scaling: product co-purchases (package)') + 
-  ylab("") + xlab("") + theme_bw() + 
+  geom_point(size = 2) + ggtitle('Multidimensional scaling (package): product co-purchases') + 
+  ylab("") + xlab("") + theme_bw() + theme(plot.title = element_text(size=16)) + 
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
-  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=5)
 print(pack.plot)
 ggsave(pack.plot,filename='Plots/package_plot.png',width=8, height=8)
 
 # comparison plot of own implementation and package results
-
+compare.plot <- ggplot(data = pack.config, aes(x = D1, y = D2)) + 
+  geom_point(aes(colour="R Package"), size = 2, fill="blue") +
+  geom_point(data = own.config, aes(colour="Own implementation"), size=2) +
+  labs(x = "", y = "", colour = "")+
+  ggtitle('Multidimensional scaling (comparison): product co-purchases') + 
+  theme_bw() + theme(legend.position="bottom", plot.title = element_text(size=16), legend.text = element_text(size=14)) + 
+  coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1))+
+  geom_text(label=labels, hjust=0.3, vjust=1.3, size=5)
+print(compare.plot)
+ggsave(compare.plot,filename='Plots/compare_plot.png',width=8, height=8.5)
 
 # plot of ordinal results
 pack.ord.config <- data.frame(pack.ord.result$conf)
 rownames(pack.ord.config) <- labels
 pack.plot <- ggplot(data = pack.ord.config, aes(x = D1, y = D2))+
-  geom_point(size = 1.5) + ggtitle('Multidimensional scaling (ordinal transformation): product co-purchases') + 
-  ylab("") + xlab("") + theme_bw() + 
+  geom_point(size = 2) + ggtitle('Multidimensional scaling (ordinal transformation): product co-purchases') + 
+  ylab("") + xlab("") + theme_bw() + theme(plot.title = element_text(size=16)) + 
   coord_cartesian(ylim = c(-1, 1), xlim = c(-1, 1)) + 
-  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=4)
+  geom_text(aes(label=labels),hjust=0.3, vjust=1.3, size=5)
 print(pack.plot)
 ggsave(pack.plot,filename='Plots/package_ord_plot.png',width=8, height=8)
