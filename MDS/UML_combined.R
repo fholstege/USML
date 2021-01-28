@@ -129,9 +129,9 @@ calc_mB <- function(mDis, mEucD){
 #
 # Arguments; 
 #     mDis: nxn dissimilarity matrix
-#     X: nxp input matrix
+#     mX: nxp input matrix
 #     tX.X: X'X, pxp matrix
-#     B: matrix B, calculated with calc_mB
+#     mB: matrix B, calculated with calc_mB
 # 
 #   Output:
 #      stress: float, normalized stress
@@ -198,13 +198,12 @@ create_coordinate_plot <- function(result_MDS, title, labels){
 #      output: list, with final configuration, n of iterations, and stress of final configuration
 #  
 
-SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
+SMACOF <- function(mDis, config = NULL, eps = 1e-06, p=2) {
   
   # Number of variables
   n <- nrow(mDis)
-  p <- 2
-  
-  # Use random or initial Torgerson configuration
+
+  # Use random or assigned configuration
   if (is.null(config) == T) {
     mX<- matrix(data = rnorm(n*p,), nrow = n, ncol = p)
   } else {
@@ -231,7 +230,7 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
     k <- k+1
     
     # Update X
-    mX<- (1/n) * mBZ %*% mZ[[k-1]]
+    mX<- (1/n) * (mBZ %*% mZ[[k-1]])
     mZ <- list.append(mZ,mX)
     
     # Obtain new distances
@@ -266,6 +265,8 @@ SMACOF <- function(mDis, config = NULL, eps = 1e-06) {
 # create dissimilarity matrix and ordinal dissimilarity matrix
 labels <- colnames(basket)
 mDis <- calc_mDis(as.matrix(basket))
+mDis
+
 mDis_Ord <- calc_mDis_Ord(mDis)
 
 ### B) The function for the euclidean distance matrix is euc_dist_M, found in line 83-100
@@ -301,6 +302,8 @@ pack.config <- data.frame(pack.result$conf)
 rownames(pack.config) <- labels
 own.config <- data.frame(own.result$conf)
 rownames(own.config) <- labels
+
+help(list.append)
 
 # define comparison plot
 compare_plot <- ggplot(data = pack.config, aes(x = D1, y = D2)) + 
