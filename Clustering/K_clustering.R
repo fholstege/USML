@@ -33,14 +33,13 @@ set.seed(123)
 
 sq.euc.dist <- function(x1, x2){sum((x1 - x2)^2)}
 
-calc_dist_m <- function(mX, centroids){ outer(1:nrow(mX), 1:K, FUN=Vectorize(function(x, y) sq.euc.dist(mX[x,], centroids[y,])))}
-
+calc_sq_euc_dist_m <- function(mX, centroids){ as.matrix(pdist(mX,centroids))^2}
 
 ###############################################################################
 # C) K-means
 ##############################################################################
 
-K_means <- function(mX, K, n_starts = 10, n_random_centroids=10){
+K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
   
   # counter for number of random points to pick
   j = 1
@@ -62,13 +61,13 @@ K_means <- function(mX, K, n_starts = 10, n_random_centroids=10){
     # counter for iterations once random points picked
     i = 1
 
-    while(i <= n_starts){
+    while(i <= n_iter){
       
       # update
       i = i + 1
       
       # create distance matrix between centroids and all observations
-      mDist <- calc_dist_m(mX, centroids)
+      mDist <- calc_sq_euc_dist_m(mX, centroids)
       
       # get the clusters for each centroid
       clusters <- apply(mDist, 1, FUN=which.min)
@@ -81,13 +80,14 @@ K_means <- function(mX, K, n_starts = 10, n_random_centroids=10){
     }
     
     # get the final distance matrix
-    mDist_final <- calc_dist_m(mX, centroids)
+    mDist_final <- calc_sq_euc_dist_m(mX, centroids)
     
     # get the minimum distance per observation, combined with cluster
     mX_dist_c <- cbind(apply(t, 1, FUN=min), clusters)
     
     # current within sums and total sums
     within_SS <- aggregate(mX_dist_c,by= list(mX_dist_c[,'clusters']), sum)
+    
     tot_within_ss <- sum(within_SS)
 
     if (tot_within_ss < curr_tot_within_SS){
@@ -106,12 +106,13 @@ K_means <- function(mX, K, n_starts = 10, n_random_centroids=10){
 
 K = 3
 mX <- as.matrix(cityweather)
+
 result_ours <- K_means(as.matrix(cityweather), K, n_random_centroids = 10)
 result_ours$centroids
-result_ours$tot_within_SS
+result_ours$within_SS
 
 
-result_pack <- kmeans(mX, 3, iter.max=10, nstart=10)
+result_pack <- kmeans(mX, K, iter.max=10, nstart=100)
 result_pack$centers
 result_pack$withinss
 
