@@ -18,7 +18,7 @@ rm(list=ls())
 setwd('C:/Users/evamy/Documents/1. University/MPhil Tinbergen/Year 2/Block 3/UML/Exercise 2/')
 
 # load data
-load("basket.RData")
+load("Data/basket.RData")
 
 # load dependencies
 if(!require('smacof'))install.packages('smacof', quiet=T)
