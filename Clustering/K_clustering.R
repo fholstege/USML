@@ -19,13 +19,77 @@ rm(list=ls())
 # Packes required for subsequent analysis. P_load ensures these will be installed and loaded. 
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(pdist,
-               tidyverse) 
+               tidyverse, 
+               dplyr, 
+               tidyr) 
 
 # load the data
 load("Data/cityweather.Rdata")
 
 # set seed
 set.seed(123)
+
+################################################################################
+# Data prep functions
+################################################################################
+
+# Clean the data
+data.cleaning <- function(data, dup.cols) {
+  
+  # Enable variable calling
+  attach(data)
+  
+  # check if there are missing values
+  if (any(is.na(data)) == T) {
+    na.rows <- length(which(apply(data, 1, function(X) any(is.na(X)))))
+    cat('Data set contains', sum(is.na(data)),'missing values, in', 
+        na.rows, 'rows.')
+    
+    # Remove rows with missing values (if less than 1% of data)
+    if (na.rows/nrow(data) < 0.01) {
+      data <- na.omit(data)
+    } else {
+      print('\n\nWarning: too many missing values removed.')
+    }}
+  
+  # check for duplicates and remove them
+  duplicate_indexes <- which(duplicated(data[dup.cols]),) 
+  data <- data[-duplicate_indexes,]
+  
+  return(data)
+}
+
+# Select variables
+data.selection <- function(data, select.cols) {
+  
+  # store selected variables in dataframe
+  data <- as.data.frame(data)
+  data <- subset(data, select = select.cols)
+  
+  return(data)
+}
+
+# Standardize the data (if not same unit of measurement)
+data.scaling <- function(data, method = "stand", select.vars) {
+  
+  # select subset to be scaled
+  vars <- subset(data, select = select.vars)
+  
+  # scale using chosen method
+  if (method == "minmax"){
+    vars <- apply(vars, 2, function (x) (x-min(x))/(max(x)-min(x)))
+  } else if (method == "stand") {
+    vars < scale(vars, center = T, scale = T)
+  } else {
+    print("Specify: method = c(stand, minmax). Stand used by default.")
+  }
+  
+  # obtain all data incl. scaled vars
+  data <- data[,!(names(data) %in% select.vars)]
+  data <- cbind(data,vars)
+  
+  return(data)
+}
 
 ###############################################################################
 # B) Helper Functions
@@ -141,4 +205,21 @@ result_ours$within_SS
 result_pack <- kmeans(mX, K, iter.max=10, nstart=10)
 result_pack$centers
 result_pack$withinss
+            
+### This is how I called the functions
+### Required packages: dplyr
 
+# Obtain cleaned data
+dup.cols <- c('track_name', 'track_artist')
+data <- data.cleaning(data, dup.cols)
+
+# Obtain filtered data
+data <- filter(data, track_popularity > 0)
+select.cols <- c('danceability', 'energy', 'loudness', 'speechiness',
+                 'acousticness', 'instrumentalness', 'liveness', 'valence',
+                 'tempo')
+data <- data.selection(data, select.cols)
+
+# Adapt variables that need scaling
+select.vars <- c('loudness', 'tempo')
+data <- data.scaling(data, method = "minmax", select.vars)
