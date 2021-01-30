@@ -3,9 +3,12 @@
 # Purpose: Code for Unsupervised Machine Learning Assignment 2 - applying K-means and K-medioids
 # Sections: 
 #           A) Load packages and data
-#           B) Helper functions
+#           B) Data prep functions
+#           C) Helper functions for K-means implementation
 #           C) K-means implementation
-#           D) Compare to package  
+#           D) Compare to our implementation package 'kmeans'
+#           E) Clean spotify data for analysis 
+#           F) Implement K-means and K-proto algorithms - find optimal K and analyse clusters
 #################
 
 
@@ -21,10 +24,16 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(pdist,
                tidyverse, 
                dplyr, 
-               tidyr) 
-
+               tidyr,
+               readr,
+               psych,
+               tidyverse,
+               reshape2,
+               GGally,
+               clustMixType,
+               fastDummies) 
 # load the data
-load("Data/cityweather.Rdata")
+spotify_songs <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv')
 
 # set seed
 set.seed(123)
@@ -35,9 +44,6 @@ set.seed(123)
 
 # Clean the data
 data.cleaning <- function(data, dup.cols) {
-  
-  # Enable variable calling
-  attach(data)
   
   # check if there are missing values
   if (any(is.na(data)) == T) {
@@ -127,8 +133,8 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
   
   # placeholder for saving centroids
   fin_centroids <- matrix(0, K, ncol(mX))
-  
   fin_within_SS <- matrix(0,1,K)
+  fin_clusters <- rep(0, n)
   
 
   while(j <= n_random_centroids){
@@ -154,7 +160,7 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
       mDist <- calc_sq_euc_dist_m(mX, centroids)
       
       # get the clusters for each centroid
-      new_clusters <- apply(mDist, 1, FUN=which.min)
+      new_clusters <- apply(mDist, MARGIN=1, FUN=which.min)
 
       # check - if none of the clusters changed, stop
       if(any(clusters != new_clusters)){
@@ -180,11 +186,12 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
       curr_tot_within_SS <- tot_within_ss
       fin_centroids <- centroids
       fin_within_SS <- within_SS
+      fin_clusters <- clusters
       
     }
   }
   
-  result = list(centroids = fin_centroids, tot_within_SS = curr_tot_within_SS, within_SS = fin_within_SS)
+  result = list(centroids = fin_centroids, tot_within_SS = curr_tot_within_SS, within_SS = fin_within_SS, clusters = fin_clusters)
   
   return(result)
 }
@@ -193,33 +200,180 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
 # D) Compare to package
 ##############################################################################
 
+# show for K = 3
 K = 3
-mX <- as.matrix(cityweather)
 
+load("Data/cityweather.Rdata")
+mX_city <- as.matrix(cityweather)
 
-result_ours <- K_means(as.matrix(cityweather), K,n_iter = 10, n_random_centroids = 10)
+# check our results 
+result_ours <- K_means(mX_city, K,n_iter = 10, n_random_centroids = 10)
 result_ours$centroids
 result_ours$within_SS
 
-
-result_pack <- kmeans(mX, K, iter.max=10, nstart=10)
+# check results package
+result_pack <- kmeans(mX_city, K, iter.max=10, nstart=10)
 result_pack$centers
 result_pack$withinss
-            
-### This is how I called the functions
-### Required packages: dplyr
 
-# Obtain cleaned data
+###############################################################################
+# E) Clean Spotify Data
+##############################################################################
+
+# Obtain cleaned data, with duplicates removed
 dup.cols <- c('track_name', 'track_artist')
-data <- data.cleaning(data, dup.cols)
+spotify_clean <- data.cleaning(spotify_songs, dup.cols)
 
-# Obtain filtered data
-data <- filter(data, track_popularity > 0)
-select.cols <- c('danceability', 'energy', 'loudness', 'speechiness',
-                 'acousticness', 'instrumentalness', 'liveness', 'valence',
-                 'tempo')
-data <- data.selection(data, select.cols)
+# select columns
+select.cols.con <- c('danceability', 'energy', 'loudness', 'speechiness',
+                        'acousticness', 'instrumentalness', 'liveness', 'valence',
+                        'tempo')
+
+vKey <- data.selection(spotify_clean , 'key')
+dummy_key <- dummy_cols(vKey)[,-1]
+
+
+spotify_selected <- data.selection(spotify_clean, select.cols.con)
+spotify_selected_cat <- cbind(spotify_selected, spotify_clean$mode,dummy_key) 
+
 
 # Adapt variables that need scaling
-select.vars <- c('loudness', 'tempo')
-data <- data.scaling(data, method = "minmax", select.vars)
+select.scale.vars <- c('loudness', 'tempo')
+spotify_final <- data.scaling(spotify_selected, method = "minmax", select.scale.vars)
+spotify_final_cat <- data.scaling(spotify_selected_cat, method = "minmax", select.scale.vars)
+
+# turn to matrix
+mX_spotify <- as.matrix(spotify_final)
+
+# set mode and key as factors for the kproto
+spotify_final_cat$mode <- as.factor(spotify_final_cat$mode)
+
+
+###############################################################################
+# E) Determine optimal K
+##############################################################################
+
+
+######
+# find_K_elbow: generate plot with within ss per K 
+######
+find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans"){
+  
+  # list of predefined length with the within ss
+  lResults <-  vector(mode = "list", length = length(K_range))
+  result_index <- 1
+
+  # go over all K's and get the results
+  for(K in K_range){
+    
+    # pick kmeans or kproto based on the user specification
+    if(type == "kmeans"){
+      result_k <- kmeans(mX, K, n_iter, n_random_centroids)$tot.withinss
+    }else if (type == "kproto"){
+      result_k <- kproto(mX, K, n_iter, n_random_centroids)$tot.withinss
+    }else{
+      stop("Specify one of 'kmeans' or 'kproto' for 'type' variable")
+    }
+    
+    # add to predefined list of results
+    lResults[[result_index]] <- result_k
+    result_index <- result_index + 1
+    
+  }
+  
+  # get list of results, create dataframe with K and total within ss
+  ltot.withinss <-  unlist(lResults)
+  dfElbowPlot <- data.frame(K = K_range_spotify, tot.withinss = ltot.withinss)
+  
+  # define the elbow plot
+  elbowPlot <- ggplot(data = dfElbowPlot, aes(x = K, y =tot.withinss))+
+    geom_line(color = "Red") + 
+    labs(x = "K", y = "Total Within Sum of Squared Distances")+
+    theme_bw()
+  
+  return(elbowPlot)
+  
+  
+} 
+
+K_range_spotify <- 2:10
+elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
+elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto')
+
+
+
+###############################################################################
+# E) Analyse with optimal K
+##############################################################################
+
+K_ideal <- 4
+result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 10)
+result_kproto <- kmeans(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10)
+result_kproto
+
+dfSpotify_clustered <- data.frame(cbind(spotify_final_cat, 
+                                  cluster_kmeans = result_kmeans$cluster), 
+                                  cluster_kproto = result_kproto$cluster )
+
+dfSummary_kmeans <- dfSpotify_clustered %>% 
+  group_by(cluster_kmeans) %>%
+  summarise_all(mean) %>% 
+  select(-mode, -key, -cluster_kproto)
+dfSummary_kmeans
+
+dfSummary_kproto <-  dfSpotify_clustered %>% 
+  group_by(cluster_kproto) %>%
+  summarise_all(mean) %>%
+  select(-mode, -key, -cluster_kproto)
+dfSummary_kproto
+
+dfSummary_kproto_mode <- dfSpotify_clustered %>% 
+  group_by(cluster_kproto, mode) %>%
+  summarise(n_mode = n()) %>%
+  mutate(perc_mode = (n_mode/sum(n_mode)))
+  
+dfSummary_kproto_key <- dfSpotify_clustered %>% 
+  group_by(cluster_kproto, key) %>%
+  summarise(n_key = n()) %>%
+  mutate(perc_mode = (n_key/sum(n_key)))
+dfSummary_kproto_key
+
+
+
+
+table(dfSpotify_clustered$mode)
+
+melted_summary_kproto <- melt(dfSummary_kproto, id = "cluster_kproto")
+melted_summary_kmeans <-  melt(dfSummary_kmeans, id = "cluster_kmeans")
+
+
+ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  theme_bw()
+
+
+ggplot(data = melted_summary_kmeans, aes(x = cluster_kmeans, y = value, fill = variable))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  theme_bw()
+
+
+dfSpotify_complete <- cbind(dfSpotify_clustered, 
+                            name = spotify_clean$track_name, 
+                            artist = spotify_clean$track_artist,
+                            popularity =spotify_clean$track_popularity,
+                            genre = spotify_clean$playlist_genre )
+
+dfSummary_popularity <- dfSpotify_complete %>% 
+  group_by(cluster_kproto) %>%
+  summarise(avg_popularity = mean(popularity))
+
+
+
+dfSummary_genres <- dfSpotify_complete %>%
+  group_by(cluster_kproto, genre) %>%
+  summarise(n_genre = n()) %>%
+  mutate(perc_genre = (n_genre/sum(n_genre)))
+
+ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  theme_bw()
