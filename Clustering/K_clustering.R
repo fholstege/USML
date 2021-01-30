@@ -231,10 +231,10 @@ select.cols.con <- c('danceability', 'energy', 'loudness', 'speechiness',
 
 vKey <- data.selection(spotify_clean , 'key')
 dummy_key <- dummy_cols(vKey)[,-1]
-
+dummy_key_factor <- data.frame(lapply(dummy_key, factor))
 
 spotify_selected <- data.selection(spotify_clean, select.cols.con)
-spotify_selected_cat <- cbind(spotify_selected, spotify_clean$mode,dummy_key) 
+spotify_selected_cat <- cbind(spotify_selected, mode = spotify_clean$mode,dummy_key_factor) 
 
 
 # Adapt variables that need scaling
@@ -247,6 +247,8 @@ mX_spotify <- as.matrix(spotify_final)
 
 # set mode and key as factors for the kproto
 spotify_final_cat$mode <- as.factor(spotify_final_cat$mode)
+
+
 
 
 ###############################################################################
