@@ -259,7 +259,7 @@ spotify_final_cat$mode <- as.factor(spotify_final_cat$mode)
 ######
 # find_K_elbow: generate plot with within ss per K 
 ######
-find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans"){
+find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans", lambda = NULL){
   
   # list of predefined length with the within ss
   lResults <-  vector(mode = "list", length = length(K_range))
@@ -272,7 +272,7 @@ find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans
     if(type == "kmeans"){
       result_k <- kmeans(mX, K, n_iter, n_random_centroids)$tot.withinss
     }else if (type == "kproto"){
-      result_k <- kproto(mX, K, n_iter, n_random_centroids)$tot.withinss
+      result_k <- kproto(mX, K, n_iter, n_random_centroids,lambda=lambda)$tot.withinss
     }else{
       stop("Specify one of 'kmeans' or 'kproto' for 'type' variable")
     }
@@ -298,84 +298,103 @@ find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans
   
 } 
 
+##########################
+# Find ideal Lambda and K
+#########################
+
+
+# check the average standard deviation
+sigma_col <- apply(mX_spotify, 2, sd)
+avg_sigma <- mean(sigma_col)
+
+# paper says - suitable gamma is between 1/3*sigma and 2/3* sigma
+lambda = 1/3 * avg_sigma
+
+# range of values for K - check between 2 and 10
 K_range_spotify <- 2:10
 elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
-elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto')
-
+elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
 
 
 ###############################################################################
 # E) Analyse with optimal K
 ##############################################################################
 
+# ideal K 
 K_ideal <- 4
 result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 10)
-result_kproto <- kmeans(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10)
-result_kproto
+result_kproto <- kmeans(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda)
 
+
+# add the dataframes of the results of the cluster analysis and the variables
 dfSpotify_clustered <- data.frame(cbind(spotify_final_cat, 
                                   cluster_kmeans = result_kmeans$cluster), 
                                   cluster_kproto = result_kproto$cluster )
 
+
+# summarise the average values for k-means
 dfSummary_kmeans <- dfSpotify_clustered %>% 
   group_by(cluster_kmeans) %>%
-  summarise_all(mean) %>% 
-  select(-mode, -key, -cluster_kproto)
-dfSummary_kmeans
+  summarise_all(mean) %>%
+select(-starts_with("key_"), - mode, -cluster_kproto)
 
-dfSummary_kproto <-  dfSpotify_clustered %>% 
+# summarise the average values for the k-prototype
+dfSummary_kproto <- dfSpotify_clustered %>% 
   group_by(cluster_kproto) %>%
   summarise_all(mean) %>%
-  select(-mode, -key, -cluster_kproto)
-dfSummary_kproto
+  select(-starts_with("key_"), - mode, -cluster_kmeans)
 
+# summarise the percentage for the mode variable per cluster
 dfSummary_kproto_mode <- dfSpotify_clustered %>% 
   group_by(cluster_kproto, mode) %>%
   summarise(n_mode = n()) %>%
   mutate(perc_mode = (n_mode/sum(n_mode)))
-  
+
+# summarise the percentage for the key variable(s) per cluster
 dfSummary_kproto_key <- dfSpotify_clustered %>% 
-  group_by(cluster_kproto, key) %>%
-  summarise(n_key = n()) %>%
-  mutate(perc_mode = (n_key/sum(n_key)))
-dfSummary_kproto_key
+  select(starts_with("key_"), cluster_kproto) %>%
+  melt(id = 'cluster_kproto') %>%
+  group_by(cluster_kproto, variable) %>%
+  summarise(n_genre = sum(as.numeric(value)))%>%
+  mutate(perc_genre = (n_genre/sum(n_genre))) %>%
+  filter(n_genre != 0)
 
-
-
-
-table(dfSpotify_clustered$mode)
-
+# melt the datasets in order to visualise the average values
 melted_summary_kproto <- melt(dfSummary_kproto, id = "cluster_kproto")
 melted_summary_kmeans <-  melt(dfSummary_kmeans, id = "cluster_kmeans")
 
-
-ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
-  geom_bar(stat="identity", position=position_dodge()) + 
-  theme_bw()
-
-
+# grpah of the average values of the numeric values for k-means
 ggplot(data = melted_summary_kmeans, aes(x = cluster_kmeans, y = value, fill = variable))+
   geom_bar(stat="identity", position=position_dodge()) + 
+  scale_color_brewer(palette="Set1") + 
   theme_bw()
 
+# graph of the average values for the numeric values for k-prototypes
+ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  scale_color_brewer(palette="Set1") + 
+  theme_bw()
 
+# create a dataframe with the independent variables, the clusters, and further info (track name, genre)
 dfSpotify_complete <- cbind(dfSpotify_clustered, 
                             name = spotify_clean$track_name, 
                             artist = spotify_clean$track_artist,
                             popularity =spotify_clean$track_popularity,
                             genre = spotify_clean$playlist_genre )
 
+# check the average popularity per cluster
 dfSummary_popularity <- dfSpotify_complete %>% 
   group_by(cluster_kproto) %>%
   summarise(avg_popularity = mean(popularity))
 
-
-
+# summary df of the percentage per genre
 dfSummary_genres <- dfSpotify_complete %>%
   group_by(cluster_kproto, genre) %>%
   summarise(n_genre = n()) %>%
   mutate(perc_genre = (n_genre/sum(n_genre)))
 
+# distribution of genre per cluster
 ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
   geom_bar(stat="identity", position=position_dodge()) + 
+  scale_color_brewer(palette="Pastel1") + 
   theme_bw()
