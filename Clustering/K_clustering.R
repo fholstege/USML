@@ -328,6 +328,8 @@ result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,
 
 
 
+
+
 # add the dataframes of the results of the cluster analysis and the variables
 dfSpotify_clustered <- data.frame(cbind(spotify_final_cat, 
                                   cluster_kmeans = result_kmeans$cluster), 
@@ -390,20 +392,24 @@ dfKeys <- dfSpotify_clustered %>%
 dfKeys_num <- apply(dfKeys,2, as.numeric)
 dfKeys_perc_all <- colSums(dfKeys_num)/nrow(dfKeys_num)
 
+unmelted_dfKeys <- dcast(data = dfSummary_kproto_key,formula = cluster_kproto~variable,fun.aggregate = sum,value.var = "perc_genre")
+unmelted_dfKeys
+
 dfKeys_perc_all_rep <- do.call("rbind", replicate(K_ideal, dfKeys_perc_all, simplify = FALSE))
-dfKeys_perc_diff <- dfSummary_kproto_key[,-1]- dfKeys_perc_all_rep
+dfKeys_perc_diff <- melt(cbind(cluster_kproto = unmelted_dfKeys[,1], unmelted_dfKeys[,-1]- dfKeys_perc_all_rep),id="cluster_kproto")
+dfKeys_perc_diff
 
-
-current_keys <- c(as.character((unique(dfSummary_kproto_key$variable))))
+current_keys <- c(as.character((unique(dfKeys_perc_diff$variable))))
 Key_names <- c("C", "C/D", "D", "D/E", "E", "F","F/G","G", "G/A", "A", "A/B", "B")
 
-new_keys <- mapvalues(dfSummary_kproto_key$variable, from = current_keys, to = Key_names)
-dfSummary_kproto_key$variable <- new_keys
+new_keys <- mapvalues(dfKeys_perc_diff$variable, from = current_keys, to = Key_names)
+dfKeys_perc_diff$variable <- new_keys
 
-key_cluster_plot <- ggplot(data = dfSummary_kproto_key, aes(x = cluster_kproto, y = perc_genre, fill = variable))+
+dfKeys_perc_diff
+key_cluster_plot <- ggplot(data = dfKeys_perc_diff, aes(x = cluster_kproto, y = value, fill = variable))+
   geom_bar(stat="identity", position=position_dodge()) +
   scale_fill_brewer(palette="Set3", name = "Key") + 
-  labs(x = "Cluster", y = "% Of Cluster")+
+  labs(x = "Cluster", y = "% Of Cluster, Difference from overall % ")+
   scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
   theme_bw()+
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
@@ -458,3 +464,11 @@ Genre_plot
 
 # make ggpairs object
 ggpairs(dfSpotify_clustered, mapping = aes(colour = factor(dfSpotify_clustered$cluster_kproto)))
+
+
+index_min_dist_1 <- which.min(result_kproto$dists[,1])
+index_min_dist_2 <- which.min(result_kproto$dists[,2])
+index_min_dist_3 <- which.min(result_kproto$dists[,3])
+index_min_dist_4 <- which.min(result_kproto$dists[,4])
+
+dfSpotify_complete[c(index_min_dist_1,index_min_dist_2, index_min_dist_3,index_min_dist_4),]
