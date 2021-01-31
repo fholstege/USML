@@ -31,7 +31,8 @@ pacman::p_load(pdist,
                reshape2,
                GGally,
                clustMixType,
-               fastDummies) 
+               fastDummies,
+               plyr) 
 # load the data
 spotify_songs <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv')
 
@@ -308,7 +309,7 @@ sigma_col <- apply(mX_spotify, 2, sd)
 avg_sigma <- mean(sigma_col)
 
 # paper says - suitable gamma is between 1/3*sigma and 2/3* sigma
-lambda = 1/3 * avg_sigma
+lambda = 0.5 * avg_sigma
 
 # range of values for K - check between 2 and 10
 K_range_spotify <- 2:10
@@ -323,7 +324,8 @@ elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n
 # ideal K 
 K_ideal <- 4
 result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 10)
-result_kproto <- kmeans(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda)
+result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda)
+
 
 
 # add the dataframes of the results of the cluster analysis and the variables
@@ -337,18 +339,40 @@ dfSummary_kmeans <- dfSpotify_clustered %>%
   group_by(cluster_kmeans) %>%
   summarise_all(mean) %>%
 select(-starts_with("key_"), - mode, -cluster_kproto)
+dfSummary_kmeans
 
 # summarise the average values for the k-prototype
 dfSummary_kproto <- dfSpotify_clustered %>% 
   group_by(cluster_kproto) %>%
   summarise_all(mean) %>%
   select(-starts_with("key_"), - mode, -cluster_kmeans)
+dfSummary_kproto
+
+dfSummary_mean_all <- dfSpotify_clustered %>%
+select(-starts_with("key_"), - mode, -cluster_kmeans) %>%
+summarise_all(mean)
+
+dfSummary_mean_all_rep <- do.call("rbind", replicate(K_ideal, dfSummary_mean_all[-10], simplify = FALSE))
+dfSummary_kproto_diff <- cbind(dfSummary_kproto[,1], dfSummary_kproto[,-1]-dfSummary_mean_all_rep)
+
 
 # summarise the percentage for the mode variable per cluster
 dfSummary_kproto_mode <- dfSpotify_clustered %>% 
   group_by(cluster_kproto, mode) %>%
   summarise(n_mode = n()) %>%
   mutate(perc_mode = (n_mode/sum(n_mode)))
+dfSummary_kproto_mode
+
+# plot the distribution of mode
+mode_cluster_plot <- ggplot(data = dfSummary_kproto_mode, aes(x = cluster_kproto, y = perc_mode, fill = mode))+
+  geom_bar(stat="identity", position=position_dodge()) +
+  scale_fill_brewer(palette="Paired", name = "Mode", labels = c("Minor (0)", "Major (1)")) + 
+  labs(x = "Cluster", y = "% Of Cluster")+
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+mode_cluster_plot
 
 # summarise the percentage for the key variable(s) per cluster
 dfSummary_kproto_key <- dfSpotify_clustered %>% 
@@ -358,22 +382,47 @@ dfSummary_kproto_key <- dfSpotify_clustered %>%
   summarise(n_genre = sum(as.numeric(value)))%>%
   mutate(perc_genre = (n_genre/sum(n_genre))) %>%
   filter(n_genre != 0)
+dfSummary_kproto_key
 
+# get percentage of key in all genres
+dfKeys <- dfSpotify_clustered %>%
+  select(starts_with("key_"))
+dfKeys_num <- apply(dfKeys,2, as.numeric)
+dfKeys_perc_all <- colSums(dfKeys_num)/nrow(dfKeys_num)
+
+dfKeys_perc_all_rep <- do.call("rbind", replicate(K_ideal, dfKeys_perc_all, simplify = FALSE))
+dfKeys_perc_diff <- dfSummary_kproto_key[,-1]- dfKeys_perc_all_rep
+
+
+current_keys <- c(as.character((unique(dfSummary_kproto_key$variable))))
+Key_names <- c("C", "C/D", "D", "D/E", "E", "F","F/G","G", "G/A", "A", "A/B", "B")
+
+new_keys <- mapvalues(dfSummary_kproto_key$variable, from = current_keys, to = Key_names)
+dfSummary_kproto_key$variable <- new_keys
+
+key_cluster_plot <- ggplot(data = dfSummary_kproto_key, aes(x = cluster_kproto, y = perc_genre, fill = variable))+
+  geom_bar(stat="identity", position=position_dodge()) +
+  scale_fill_brewer(palette="Set3", name = "Key") + 
+  labs(x = "Cluster", y = "% Of Cluster")+
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+key_cluster_plot
+  
 # melt the datasets in order to visualise the average values
-melted_summary_kproto <- melt(dfSummary_kproto, id = "cluster_kproto")
-melted_summary_kmeans <-  melt(dfSummary_kmeans, id = "cluster_kmeans")
+melted_summary_kproto <- melt(dfSummary_kproto_diff, id = "cluster_kproto")
 
-# grpah of the average values of the numeric values for k-means
-ggplot(data = melted_summary_kmeans, aes(x = cluster_kmeans, y = value, fill = variable))+
-  geom_bar(stat="identity", position=position_dodge()) + 
-  scale_color_brewer(palette="Set1") + 
-  theme_bw()
 
 # graph of the average values for the numeric values for k-prototypes
-ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
+Avg_Numeric_kproto <- ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
   geom_bar(stat="identity", position=position_dodge()) + 
-  scale_color_brewer(palette="Set1") + 
-  theme_bw()
+  scale_fill_brewer(palette="Set1", name = "Variable") + 
+  labs(x = "Cluster", y = "Difference in cluster from Avg. Value")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+Avg_Numeric_kproto
 
 # create a dataframe with the independent variables, the clusters, and further info (track name, genre)
 dfSpotify_complete <- cbind(dfSpotify_clustered, 
@@ -386,15 +435,26 @@ dfSpotify_complete <- cbind(dfSpotify_clustered,
 dfSummary_popularity <- dfSpotify_complete %>% 
   group_by(cluster_kproto) %>%
   summarise(avg_popularity = mean(popularity))
+dfSummary_popularity
+
 
 # summary df of the percentage per genre
 dfSummary_genres <- dfSpotify_complete %>%
   group_by(cluster_kproto, genre) %>%
   summarise(n_genre = n()) %>%
   mutate(perc_genre = (n_genre/sum(n_genre)))
+dfSummary_genres
 
 # distribution of genre per cluster
-ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
+Genre_plot <- ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
   geom_bar(stat="identity", position=position_dodge()) + 
-  scale_color_brewer(palette="Pastel1") + 
-  theme_bw()
+  scale_fill_brewer(palette="Set2",  name = "Genre") + 
+  labs(x = "Cluster", y = "% Of Cluster")+ 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+Genre_plot
+
+# make ggpairs object
+ggpairs(dfSpotify_clustered, mapping = aes(colour = factor(dfSpotify_clustered$cluster_kproto)))
