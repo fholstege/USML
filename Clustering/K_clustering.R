@@ -353,7 +353,7 @@ find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans
   # define the elbow plot
   elbowPlot <- ggplot(data = dfElbowPlot, aes(x = K, y =tot.withinss))+
     geom_line(color = "Red", size = 2) + 
-    labs(x = "K", y = "Total Within Sum of Squared Distances")+
+    labs(x = "K", y = "Total Within Cluster Distance")+
     theme_bw() + 
     theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
           axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16)) 
@@ -379,8 +379,7 @@ lambda = 0.5 * avg_sigma
 K_range_spotify <- 2:10
 elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
 elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
-
-elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5) + 
+elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5)  
 
 
 
@@ -415,10 +414,13 @@ spotify_final_limitedSample <- spotify_final_cat[sample(nrow(spotify_final_cat),
 
 
 sim_tot.withinss <- check_initialPoint_range(spotify_final_limitedSample, K_ideal,lambda, iter.max = 100, nstart = 1000)
-hist(sim_tot.withinss)
 
-result_initial$tot.withinss
-result_kproto$iter
+ggplot() + 
+  geom_histogram(aes(x=sim_tot.withinss), stat='bin', colour="black", fill="#3090C7", bins = 10)+
+  labs(x = "Total Within Cluster Distance", y = "Count")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 
 
 # add the dataframes of the results of the cluster analysis and the variables
@@ -484,11 +486,10 @@ dfKeys_num <- apply(dfKeys,2, as.numeric)
 dfKeys_perc_all <- colSums(dfKeys_num)/nrow(dfKeys_num)
 
 unmelted_dfKeys <- dcast(data = dfSummary_kproto_key,formula = cluster_kproto~variable,fun.aggregate = sum,value.var = "perc_genre")
-unmelted_dfKeys
 
 dfKeys_perc_all_rep <- do.call("rbind", replicate(K_ideal, dfKeys_perc_all, simplify = FALSE))
 dfKeys_perc_diff <- melt(cbind(cluster_kproto = unmelted_dfKeys[,1], unmelted_dfKeys[,-1]- dfKeys_perc_all_rep),id="cluster_kproto")
-dfKeys_perc_diff
+
 
 current_keys <- c(as.character((unique(dfKeys_perc_diff$variable))))
 Key_names <- c("C", "C/D", "D", "D/E", "E", "F","F/G","G", "G/A", "A", "A/B", "B")
@@ -553,16 +554,15 @@ Genre_plot <- ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = p
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 Genre_plot
 
-multi.hist(mX_spotify)
 
-# make ggpairs object
-ggpairs(dfSpotify_clustered, mapping = aes(colour = factor(dfSpotify_clustered$cluster_kproto)))
+# histogram of the continuous variables
+dfX_spotify_melted <- melt(data.frame(mX_spotify))
 
+ggplot(data = dfX_spotify_melted, aes(x = value))+
+  geom_histogram(stat='bin', colour="black", fill="#3090C7")+
+  facet_wrap(~toupper(variable), scales = "free")+
+  labs(x = "Value", y = "Count")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 
-dists_kproto <- result_kproto$dists
-index_min_dist_1 <- which.min(result_kproto$dists[,1])
-index_min_dist_2 <- which.min(result_kproto$dists[,2])
-index_min_dist_3 <- which.min(result_kproto$dists[,3])
-index_min_dist_4 <- which.min(result_kproto$dists[,4])
-
-dfSpotify_complete[c(23982),]
