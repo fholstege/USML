@@ -32,8 +32,16 @@ pacman::p_load(pdist,
                GGally,
                clustMixType,
                fastDummies,
-               plyr) 
-# load the data
+               plyr,
+               parallel,
+               devtools) 
+
+# add repository to make mclapply() run in parallel (only necessary on windows)
+install_github('nathanvan/parallelsugar')
+library(parallelsugar)
+
+
+# load the raw data on spotify songs
 spotify_songs <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv')
 
 # set seed
@@ -43,7 +51,16 @@ set.seed(123)
 # Data prep functions
 ################################################################################
 
-# Clean the data
+####
+# data.cleaning: Removes NA's and duplicate rows 
+# 
+#  Arguments:
+#     data: dataframe
+#     dup.cols: columns from which to check if there is a duplicate
+# 
+# Output:
+#     data: same dataframe, without NA's and duplicates
+####
 data.cleaning <- function(data, dup.cols) {
   
   # check if there are missing values
@@ -66,7 +83,16 @@ data.cleaning <- function(data, dup.cols) {
   return(data)
 }
 
-# Select variables
+####
+# data.selection: Removes NA's and duplicate rows 
+# 
+#  Arguments:
+#     data: dataframe
+#     select.cols: columns which to select
+# 
+# Output:
+#     data: same dataframe, without NA's and duplicates
+####
 data.selection <- function(data, select.cols) {
   
   # store selected variables in dataframe
@@ -76,7 +102,19 @@ data.selection <- function(data, select.cols) {
   return(data)
 }
 
-# Standardize the data (if not same unit of measurement)
+
+####
+# data.scaling: scales chosen columns
+# 
+#  Arguments:
+#     data: dataframe
+#     method: string, one of "minmax" or "stand"
+#     select.vars: vars to scale
+# 
+# Output:
+#     data: same dataframe, with scaled columns
+####
+
 data.scaling <- function(data, method = "stand", select.vars) {
   
   # select subset to be scaled
@@ -102,9 +140,33 @@ data.scaling <- function(data, method = "stand", select.vars) {
 # B) Helper Functions
 ###############################################################################
 
-sq.euc.dist <- function(x1, x2){sum((x1 - x2)^2)}
+
+
+
+
+####
+# calc_sq_euc_dist_m: calculates squared euclidean distance matrix between X and centroids
+# 
+#  Arguments:
+#     mX: matrix of characteristics
+#     centroid: matrix of centroids
+# 
+# Output:
+#     n x K matrix of squared euclidean distances
+####
 
 calc_sq_euc_dist_m <- function(mX, centroids){ as.matrix(pdist(mX,centroids))^2}
+
+####
+# calc_within_ss: calculates within sum of squares for a given distance matrix
+# 
+#  Arguments:
+#     mDist: n x K matrix of distances
+#     clusters: nx 1 vector of assigned clusters 
+# 
+# Output:
+#    k floats, within ss
+####
 
 calc_within_ss <- function(mDist, clusters){ 
   
@@ -198,7 +260,7 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
 }
 
 ###############################################################################
-# D) Compare to package
+# D) Compare our implementation to packageto package
 ##############################################################################
 
 # show for K = 3
@@ -317,7 +379,7 @@ lambda = 0.5 * avg_sigma
 K_range_spotify <- 2:10
 elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
 elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
-elbowPlot_kproto 
+
 elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5) + 
 
 
@@ -329,10 +391,34 @@ elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black"
 # ideal K 
 K_ideal <- 4
 result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 10)
-result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda)
+result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda, keep.data=TRUE)
 
 
 
+check_initialPoint_range <- function(dfX, K, lambda, iter.max, nstart){
+  
+  range <- 1:nstart
+  lResults = vector(mode = "list", length = length(nstart))
+
+  get_initial_result <- function(i,dfX, K, iter.max, lambda, l){l[[i]] <- kproto(dfX, K, iter.max = 100, nstart = 1,lambda = lambda)$tot.withinss}
+  
+  par_result <- mclapply(range, get_initial_result, dfX=dfX, K=K, iter.max=iter.max, lambda=lambda, l=lResults, mc.cores = detectCores()/2)
+  
+  ltot.withinss <-  unlist(par_result)
+  
+  return(ltot.withinss)
+  
+}
+
+
+spotify_final_limitedSample <- spotify_final_cat[sample(nrow(spotify_final_cat), 5000), ]
+
+
+sim_tot.withinss <- check_initialPoint_range(spotify_final_limitedSample, K_ideal,lambda, iter.max = 100, nstart = 1000)
+hist(sim_tot.withinss)
+
+result_initial$tot.withinss
+result_kproto$iter
 
 
 # add the dataframes of the results of the cluster analysis and the variables
@@ -466,6 +552,8 @@ Genre_plot <- ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = p
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 Genre_plot
+
+multi.hist(mX_spotify)
 
 # make ggpairs object
 ggpairs(dfSpotify_clustered, mapping = aes(colour = factor(dfSpotify_clustered$cluster_kproto)))
