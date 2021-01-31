@@ -290,9 +290,11 @@ find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans
   
   # define the elbow plot
   elbowPlot <- ggplot(data = dfElbowPlot, aes(x = K, y =tot.withinss))+
-    geom_line(color = "Red") + 
+    geom_line(color = "Red", size = 2) + 
     labs(x = "K", y = "Total Within Sum of Squared Distances")+
-    theme_bw()
+    theme_bw() + 
+    theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+          axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16)) 
   
   return(elbowPlot)
   
@@ -315,6 +317,9 @@ lambda = 0.5 * avg_sigma
 K_range_spotify <- 2:10
 elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
 elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
+elbowPlot_kproto 
+elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5) + 
+
 
 
 ###############################################################################
@@ -466,9 +471,10 @@ Genre_plot
 ggpairs(dfSpotify_clustered, mapping = aes(colour = factor(dfSpotify_clustered$cluster_kproto)))
 
 
+dists_kproto <- result_kproto$dists
 index_min_dist_1 <- which.min(result_kproto$dists[,1])
 index_min_dist_2 <- which.min(result_kproto$dists[,2])
 index_min_dist_3 <- which.min(result_kproto$dists[,3])
 index_min_dist_4 <- which.min(result_kproto$dists[,4])
 
-dfSpotify_complete[c(index_min_dist_1,index_min_dist_2, index_min_dist_3,index_min_dist_4),]
+dfSpotify_complete[c(23982),]
