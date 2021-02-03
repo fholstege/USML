@@ -111,7 +111,7 @@ policy_UCB <- function(dfResults_arms, fC){
 #
 #   
 ###
-simulation_policy <- function(dfBandit, policy_type, exploration,...){
+sim_policy <- function(dfBandit, policy_type, exploration,...){
   
   ## Part 1: set parameters 
   n_obs <- length(dfBandit$result)
@@ -194,6 +194,14 @@ simulation_policy <- function(dfBandit, policy_type, exploration,...){
   
 }
 
+
+sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
+  
+  
+  
+  
+}
+
 ################################################################################
 # D) Define functions to analyse the results (plots) 
 ################################################################################
@@ -231,18 +239,20 @@ create_armChoice_plot <- function(dfResult){
 }
 
 
+
+
  
 
 
 #check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
-result_sim_eps_01 <- simulation_policy(dfBandit_sim, "greedy", 0.2, eps=0.1)
-result_sim_eps_005 <- simulation_policy(dfBandit_sim, "greedy", 0.2, eps=0.05)
-result_sim_eps_001 <- simulation_policy(dfBandit_sim, "greedy", 0.2, eps=0.01)
+result_sim_eps_01 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.1)
+result_sim_eps_005 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.05)
+result_sim_eps_001 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.01)
 
 #check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
-result_sim_c_01 <- simulation_policy(dfBandit_sim, "UCB", 0.2, fC=0.1)
-result_sim_c_02 <- simulation_policy(dfBandit_sim, "UCB", 0.2, fC=0.2)
-result_sim_c_03 <- simulation_policy(dfBandit_sim, "UCB", 0.2, fC=0.3)
+result_sim_c_01 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.1)
+result_sim_c_02 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.2)
+result_sim_c_03 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.3)
 
 # visualize the results for epsilon difference 
 dfResult_sims_eps <- data.frame(1:length(result_sim_eps_01$total$result), 
@@ -282,6 +292,7 @@ dfSummary <- dfBandit_sim %>%
             sample_size = n(),
             succes_rate = succes_size/sample_size)
 dfSummary$succes_rate
+
 
 
 # simulate with package - key difference is that they seem to know beforehand what the top choice is
