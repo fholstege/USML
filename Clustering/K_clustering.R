@@ -8,7 +8,10 @@
 #           C) K-means implementation
 #           D) Compare to our implementation package 'kmeans'
 #           E) Clean spotify data for analysis 
-#           F) Implement K-means and K-proto algorithms - find optimal K and analyse clusters
+#           F) Find optimal K, Lambda, and random starts 
+#           G) Analyse the results
+#
+#
 #################
 
 
@@ -32,9 +35,9 @@ pacman::p_load(pdist,
                GGally,
                clustMixType,
                fastDummies,
-               plyr,
                parallel,
-               devtools) 
+               devtools,
+               xtable) 
 
 # add repository to make mclapply() run in parallel (only necessary on windows)
 install_github('nathanvan/parallelsugar')
@@ -83,25 +86,6 @@ data.cleaning <- function(data, dup.cols) {
   return(data)
 }
 
-####
-# data.selection: Removes NA's and duplicate rows 
-# 
-#  Arguments:
-#     data: dataframe
-#     select.cols: columns which to select
-# 
-# Output:
-#     data: same dataframe, without NA's and duplicates
-####
-data.selection <- function(data, select.cols) {
-  
-  # store selected variables in dataframe
-  data <- as.data.frame(data)
-  data <- subset(data, select = select.cols)
-  
-  return(data)
-}
-
 
 ####
 # data.scaling: scales chosen columns
@@ -137,12 +121,8 @@ data.scaling <- function(data, method = "stand", select.vars) {
 }
 
 ###############################################################################
-# B) Helper Functions
+# B) Helper Functions for K_means
 ###############################################################################
-
-
-
-
 
 ####
 # calc_sq_euc_dist_m: calculates squared euclidean distance matrix between X and centroids
@@ -183,7 +163,24 @@ calc_within_ss <- function(mDist, clusters){
 # C) K-means
 ##############################################################################
 
-K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
+####
+# K_means: implements K_means algorithm
+# 
+#  Arguments:
+#     mX: matrix of characteristics
+#     K: number of clusters
+#     n_iter: number of iterations before stopping
+#     n_random_centroids: the number of random starts to try
+# 
+# 
+# Important: 
+#     Current stopping criterion, apart from max iterations, is if there are no changes in assigned clusters     
+# 
+# Output:
+#     n x K matrix of squared euclidean distances
+####
+
+K_means <- function(mX, K, n_iter = 10, n_random_centroids=10){
   
   # parameters
   n <- nrow(mX)
@@ -199,7 +196,6 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
   fin_within_SS <- matrix(0,1,K)
   fin_clusters <- rep(0, n)
   
-
   while(j <= n_random_centroids){
     
     # update
@@ -254,13 +250,14 @@ K_means <- function(mX, K, n_iter = 10, n_random_centroids=10, eps = 1e-6){
     }
   }
   
+  # save results in a list
   result = list(centroids = fin_centroids, tot_within_SS = curr_tot_within_SS, within_SS = fin_within_SS, clusters = fin_clusters)
   
   return(result)
 }
 
 ###############################################################################
-# D) Compare our implementation to packageto package
+# D) Compare our implementation to package
 ##############################################################################
 
 # show for K = 3
@@ -270,14 +267,19 @@ load("Data/cityweather.Rdata")
 mX_city <- as.matrix(cityweather)
 
 # check our results 
-result_ours <- K_means(mX_city, K,n_iter = 10, n_random_centroids = 10)
+result_ours <- K_means(mX_city, K,n_iter = 10, n_random_centroids = 100)
 result_ours$centroids
 result_ours$within_SS
 
+dfResult <- cbind(result_ours$centroids, result_ours$within_SS)[-c(6,7)]
+xtable(dfResult)
+
 # check results package
-result_pack <- kmeans(mX_city, K, iter.max=10, nstart=10)
-result_pack$centers
-result_pack$withinss
+result_pack <- kmeans(mX_city, K, iter.max=10, nstart=100)
+
+xtable(cbind(result_pack$centers, result_pack$withinss))
+
+help(kmeans)
 
 ###############################################################################
 # E) Clean Spotify Data
@@ -292,35 +294,42 @@ select.cols.con <- c('danceability', 'energy', 'loudness', 'speechiness',
                         'acousticness', 'instrumentalness', 'liveness', 'valence',
                         'tempo')
 
-vKey <- data.selection(spotify_clean , 'key')
+# create dummies for key variable
+vKey <- spotify_clean %>% select('key')
 dummy_key <- dummy_cols(vKey)[,-1]
 dummy_key_factor <- data.frame(lapply(dummy_key, factor))
 
-spotify_selected <- data.selection(spotify_clean, select.cols.con)
+# select data for kmeans, and kproto
+spotify_selected <- spotify_clean %>% select(all_of( select.cols.con))
 spotify_selected_cat <- cbind(spotify_selected, mode = spotify_clean$mode,dummy_key_factor) 
-
 
 # Adapt variables that need scaling
 select.scale.vars <- c('loudness', 'tempo')
 spotify_final <- data.scaling(spotify_selected, method = "minmax", select.scale.vars)
 spotify_final_cat <- data.scaling(spotify_selected_cat, method = "minmax", select.scale.vars)
 
-# turn to matrix
+# turn to matrix for kmeans
 mX_spotify <- as.matrix(spotify_final)
 
 # set mode and key as factors for the kproto
 spotify_final_cat$mode <- as.factor(spotify_final_cat$mode)
 
-
-
-
 ###############################################################################
-# E) Determine optimal K
+# F) Determine optimal K and number of random starts
 ##############################################################################
 
 
 ######
 # find_K_elbow: generate plot with within ss per K 
+# 
+# Arguments; 
+#     mX: matrix X of attributes, numeric continuous
+#     K_range; 1:max_k, try these values of K
+#     n_random_centroids: number of random starts
+#     type: string, one of 'kmeans' or 'kproto'
+#     lambda: if type='kproto', then set lambda
+#   
+#  output: ggplot object with elbowplot
 ######
 find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans", lambda = NULL){
   
@@ -363,43 +372,26 @@ find_K_elbow <- function(mX, K_range, n_iter, n_random_centroids, type = "kmeans
   
 } 
 
-##########################
-# Find ideal Lambda and K
-#########################
 
+######
+# check_initialPoint_range: checks distribution of the scores one gets for n starts with kproto 
+# 
+# Arguments:
+#     dfX: dataframe X
+#     K: number of clusters
+#     iter.max: number of max iterations
+#     nstart: number of simulations, standard = 1000
+#
+# Output:`
+#     ltot.withinss: list of length nstart of total within sum of squares for each simulation
+######
 
-# check the average standard deviation
-sigma_col <- apply(mX_spotify, 2, sd)
-avg_sigma <- mean(sigma_col)
-
-# paper says - suitable gamma is between 1/3*sigma and 2/3* sigma
-lambda = 0.5 * avg_sigma
-
-# range of values for K - check between 2 and 10
-K_range_spotify <- 2:10
-elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
-elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
-elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5)  
-
-
-
-###############################################################################
-# E) Analyse with optimal K
-##############################################################################
-
-# ideal K 
-K_ideal <- 4
-result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 10)
-result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 10,lambda = lambda, keep.data=TRUE)
-
-
-
-check_initialPoint_range <- function(dfX, K, lambda, iter.max, nstart){
+check_initialPoint_range <- function(dfX, K, lambda, iter.max, nstart=1000){
   
   range <- 1:nstart
   lResults = vector(mode = "list", length = length(nstart))
-
-  get_initial_result <- function(i,dfX, K, iter.max, lambda, l){l[[i]] <- kproto(dfX, K, iter.max = 100, nstart = 1,lambda = lambda)$tot.withinss}
+  
+  get_initial_result <- function(i,dfX, K, iter.max, lambda, l){l[[i]] <- kproto(dfX, K, iter.max = iter.max, nstart = 1,lambda = lambda)$tot.withinss}
   
   par_result <- mclapply(range, get_initial_result, dfX=dfX, K=K, iter.max=iter.max, lambda=lambda, l=lResults, mc.cores = detectCores()/2)
   
@@ -410,17 +402,58 @@ check_initialPoint_range <- function(dfX, K, lambda, iter.max, nstart){
 }
 
 
+########
+# Check how many random starts we should have
+########
+
+# get random sample of 5000 observations from datsaet
 spotify_final_limitedSample <- spotify_final_cat[sample(nrow(spotify_final_cat), 5000), ]
 
-
+# get the total within ss for 1000 random starts
 sim_tot.withinss <- check_initialPoint_range(spotify_final_limitedSample, K_ideal,lambda, iter.max = 100, nstart = 1000)
 
-ggplot() + 
-  geom_histogram(aes(x=sim_tot.withinss), stat='bin', colour="black", fill="#3090C7", bins = 10)+
+# create plot that shows distribution of results for these 1000 random starts
+Convergence_Plot <- ggplot() + 
+  geom_histogram(aes(x=sim_tot.withinss), stat='bin', colour="black", fill="#3090C7", bins = 100)+
   labs(x = "Total Within Cluster Distance", y = "Count")+
   theme_bw()+
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
-        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))+
+  lims(x=c(1300,1500))
+
+########
+# Find Lambda
+########
+
+
+# check the average standard deviation
+sigma_col <- apply(mX_spotify, 2, sd)
+avg_sigma <- mean(sigma_col)
+avg_sigma
+
+# paper says - suitable gamma is between 1/3*sigma and 2/3* sigma
+lambda = 0.5 * avg_sigma
+
+########
+# Check optimal K
+########
+
+
+# range of values for K - check between 2 and 10
+K_range_spotify <- 2:10
+elbowPlot_kmeans <- find_K_elbow(mX_spotify, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kmeans')
+elbowPlot_kproto <- find_K_elbow(spotify_final_cat, K_range = K_range_spotify, n_iter = 100, n_random_centroids = 10, type='kproto', lambda = lambda)
+elbowPlot_kmeans + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5)
+elbowPlot_kproto + geom_vline(xintercept = 4, linetype="dotted", color = "black", size=1.5)  
+
+###############################################################################
+# G) Analysis of results
+##############################################################################
+
+# define ideal K based on elbow plot, run the kmeans and kproto results
+K_ideal <- 4
+result_kmeans <- kmeans(mX_spotify, K_ideal, iter.max = 100, nstart = 50)
+result_kproto <- kproto(spotify_final_cat, K_ideal, iter.max = 100, nstart = 50,lambda = lambda, keep.data=TRUE)
 
 
 # add the dataframes of the results of the cluster analysis and the variables
@@ -429,12 +462,18 @@ dfSpotify_clustered <- data.frame(cbind(spotify_final_cat,
                                   cluster_kproto = result_kproto$cluster )
 
 
+
+##############
+# First, lets grab several summary statistics for both kmeans and kproto
+##############
+
+
 # summarise the average values for k-means
 dfSummary_kmeans <- dfSpotify_clustered %>% 
   group_by(cluster_kmeans) %>%
   summarise_all(mean) %>%
 select(-starts_with("key_"), - mode, -cluster_kproto)
-dfSummary_kmeans
+dfSummary_kmeans - dfSummary_kproto[c(1,3,4,2),]
 
 # summarise the average values for the k-prototype
 dfSummary_kproto <- dfSpotify_clustered %>% 
@@ -443,14 +482,6 @@ dfSummary_kproto <- dfSpotify_clustered %>%
   select(-starts_with("key_"), - mode, -cluster_kmeans)
 dfSummary_kproto
 
-dfSummary_mean_all <- dfSpotify_clustered %>%
-select(-starts_with("key_"), - mode, -cluster_kmeans) %>%
-summarise_all(mean)
-
-dfSummary_mean_all_rep <- do.call("rbind", replicate(K_ideal, dfSummary_mean_all[-10], simplify = FALSE))
-dfSummary_kproto_diff <- cbind(dfSummary_kproto[,1], dfSummary_kproto[,-1]-dfSummary_mean_all_rep)
-
-
 # summarise the percentage for the mode variable per cluster
 dfSummary_kproto_mode <- dfSpotify_clustered %>% 
   group_by(cluster_kproto, mode) %>%
@@ -458,16 +489,6 @@ dfSummary_kproto_mode <- dfSpotify_clustered %>%
   mutate(perc_mode = (n_mode/sum(n_mode)))
 dfSummary_kproto_mode
 
-# plot the distribution of mode
-mode_cluster_plot <- ggplot(data = dfSummary_kproto_mode, aes(x = cluster_kproto, y = perc_mode, fill = mode))+
-  geom_bar(stat="identity", position=position_dodge()) +
-  scale_fill_brewer(palette="Paired", name = "Mode", labels = c("Minor (0)", "Major (1)")) + 
-  labs(x = "Cluster", y = "% Of Cluster")+
-  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
-  theme_bw()+
-  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
-        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
-mode_cluster_plot
 
 # summarise the percentage for the key variable(s) per cluster
 dfSummary_kproto_key <- dfSpotify_clustered %>% 
@@ -479,25 +500,43 @@ dfSummary_kproto_key <- dfSpotify_clustered %>%
   filter(n_genre != 0)
 dfSummary_kproto_key
 
+
+
+##############
+# Second, lets make several plots about the mode and keys (k-proto)
+##############
+
+
+# create a plot of  distribution of mode
+mode_cluster_plot <- ggplot(data = dfSummary_kproto_mode, aes(x = cluster_kproto, y = perc_mode, fill = mode))+
+  geom_bar(stat="identity", position=position_dodge()) +
+  scale_fill_brewer(palette="Paired", name = "Mode", labels = c("Minor (0)", "Major (1)")) + 
+  labs(x = "Cluster", y = "% Of Cluster")+
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+mode_cluster_plot
+
+
 # get percentage of key in all genres
 dfKeys <- dfSpotify_clustered %>%
   select(starts_with("key_"))
 dfKeys_num <- apply(dfKeys,2, as.numeric)
 dfKeys_perc_all <- colSums(dfKeys_num)/nrow(dfKeys_num)
 
+# calculate the diff between cluster key percentage and average
 unmelted_dfKeys <- dcast(data = dfSummary_kproto_key,formula = cluster_kproto~variable,fun.aggregate = sum,value.var = "perc_genre")
-
 dfKeys_perc_all_rep <- do.call("rbind", replicate(K_ideal, dfKeys_perc_all, simplify = FALSE))
 dfKeys_perc_diff <- melt(cbind(cluster_kproto = unmelted_dfKeys[,1], unmelted_dfKeys[,-1]- dfKeys_perc_all_rep),id="cluster_kproto")
 
-
+# change the keys in order to make them more understandable
 current_keys <- c(as.character((unique(dfKeys_perc_diff$variable))))
 Key_names <- c("C", "C/D", "D", "D/E", "E", "F","F/G","G", "G/A", "A", "A/B", "B")
-
 new_keys <- mapvalues(dfKeys_perc_diff$variable, from = current_keys, to = Key_names)
 dfKeys_perc_diff$variable <- new_keys
 
-dfKeys_perc_diff
+# plot the keys 
 key_cluster_plot <- ggplot(data = dfKeys_perc_diff, aes(x = cluster_kproto, y = value, fill = variable))+
   geom_bar(stat="identity", position=position_dodge()) +
   scale_fill_brewer(palette="Set3", name = "Key") + 
@@ -507,10 +546,25 @@ key_cluster_plot <- ggplot(data = dfKeys_perc_diff, aes(x = cluster_kproto, y = 
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 key_cluster_plot
+
+##################################
+# Third, lets make some graphs about average values and genre for both k-proto and kmeans
+##################################
+
+## get mean of all numeric variables in whole dataset
+dfSummary_mean_all <- dfSpotify_clustered %>%
+  select(-starts_with("key_"), - mode, -cluster_kmeans) %>%
+  summarise_all(mean)
+
+# get the diff between mean in clusters and overall mean
+dfSummary_mean_all_rep <- do.call("rbind", replicate(K_ideal, dfSummary_mean_all[-10], simplify = FALSE))
+dfSummary_kproto_diff <- cbind(dfSummary_kproto[,1], dfSummary_kproto[,-1]-dfSummary_mean_all_rep)
+dfSummary_kmeans_diff <- cbind(dfSummary_kmeans[,1], dfSummary_kmeans[,-1]-dfSummary_mean_all_rep)
+
   
 # melt the datasets in order to visualise the average values
 melted_summary_kproto <- melt(dfSummary_kproto_diff, id = "cluster_kproto")
-
+melted_summary_kmeans <- melt(dfSummary_kmeans_diff, id = "cluster_kmeans")
 
 # graph of the average values for the numeric values for k-prototypes
 Avg_Numeric_kproto <- ggplot(data = melted_summary_kproto, aes(x = cluster_kproto, y = value, fill = variable))+
@@ -520,7 +574,22 @@ Avg_Numeric_kproto <- ggplot(data = melted_summary_kproto, aes(x = cluster_kprot
   theme_bw()+
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
-Avg_Numeric_kproto
+Avg_Numeric_kproto + geom_vline(xintercept = 1.5) + geom_vline(xintercept = 2.5) + geom_vline(xintercept = 3.5)
+
+
+# create df to compare both averages
+dfCompare_avg_methods <- cbind(melted_summary_kmeans, melted_summary_kproto)
+
+# and for k-means
+Avg_Numeric_kmeans <- ggplot(data = melted_summary_kmeans, aes(x = cluster_kmeans, y = value, fill = variable))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  scale_fill_brewer(palette="Set1", name = "Variable") + 
+  labs(x = "Cluster", y = "Difference in cluster from Avg. Value")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+Avg_Numeric_kmeans  + geom_vline(xintercept = 1.5) + geom_vline(xintercept = 2.5) + geom_vline(xintercept = 3.5)
+
 
 # create a dataframe with the independent variables, the clusters, and further info (track name, genre)
 dfSpotify_complete <- cbind(dfSpotify_clustered, 
@@ -529,22 +598,29 @@ dfSpotify_complete <- cbind(dfSpotify_clustered,
                             popularity =spotify_clean$track_popularity,
                             genre = spotify_clean$playlist_genre )
 
+
 # check the average popularity per cluster
 dfSummary_popularity <- dfSpotify_complete %>% 
-  group_by(cluster_kproto) %>%
-  summarise(avg_popularity = mean(popularity))
+                          group_by(cluster_kproto) %>%
+                          summarise(mean_popularity =mean(popularity))
 dfSummary_popularity
 
-
 # summary df of the percentage per genre
-dfSummary_genres <- dfSpotify_complete %>%
+dfSummary_genres_kproto <- dfSpotify_complete %>%
   group_by(cluster_kproto, genre) %>%
   summarise(n_genre = n()) %>%
   mutate(perc_genre = (n_genre/sum(n_genre)))
-dfSummary_genres
+dfSummary_genres_kproto
 
-# distribution of genre per cluster
-Genre_plot <- ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
+# summary df of the percentage per genre
+dfSummary_genres_kmeans <- dfSpotify_complete %>%
+  group_by(cluster_kmeans, genre) %>%
+  summarise(n_genre = n()) %>%
+  mutate(perc_genre = (n_genre/sum(n_genre)))
+dfSummary_genres_kmeans
+
+# distribution of genre per cluster - kproto
+Genre_plot_kproto <- ggplot(data = dfSummary_genres_kproto[,-3], aes(x = cluster_kproto, y = perc_genre, fill = genre))+
   geom_bar(stat="identity", position=position_dodge()) + 
   scale_fill_brewer(palette="Set2",  name = "Genre") + 
   labs(x = "Cluster", y = "% Of Cluster")+ 
@@ -552,17 +628,32 @@ Genre_plot <- ggplot(data = dfSummary_genres[,-3], aes(x = cluster_kproto, y = p
   theme_bw()+
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
-Genre_plot
+Genre_plot_kproto + geom_vline(xintercept = 1.5) + geom_vline(xintercept = 2.5) + geom_vline(xintercept = 3.5)
+
+# distribution of genre per cluster - kmeans
+Genre_plot_kmeans <- ggplot(data = dfSummary_genres_kmeans[,-3], aes(x = cluster_kmeans, y = perc_genre, fill = genre))+
+  geom_bar(stat="identity", position=position_dodge()) + 
+  scale_fill_brewer(palette="Set2",  name = "Genre") + 
+  labs(x = "Cluster", y = "% Of Cluster")+ 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
+Genre_plot_kmeans + geom_vline(xintercept = 1.5) + geom_vline(xintercept = 2.5) + geom_vline(xintercept = 3.5)
 
 
 # histogram of the continuous variables
 dfX_spotify_melted <- melt(data.frame(mX_spotify))
 
-ggplot(data = dfX_spotify_melted, aes(x = value))+
+##################################
+# Check distribution per variable
+##################################
+
+Hist_Var_Plot <- ggplot(data = dfX_spotify_melted, aes(x = value))+
   geom_histogram(stat='bin', colour="black", fill="#3090C7")+
   facet_wrap(~toupper(variable), scales = "free")+
   labs(x = "Value", y = "Count")+
   theme_bw()+
   theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
         axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
-
+Hist_Var_Plot
