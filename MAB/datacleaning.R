@@ -35,8 +35,7 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
   # Loop over files in folder
   tryCatch(
     expr = 
-      {
-      i <- 0
+      {i <- 0
       for (file in files) {
         i <- i + 1
         
@@ -46,22 +45,23 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
         # store data in pre-created matrix
         data[((i-1)*n + 1):(i*n), ] <- as.matrix(rawdata)
       }
-      # create dataframe
-      data <- as.data.frame(data)
-      
-      # go back to initial directory 
-      setwd(funcdir)
-      
-      # store data in gz file
-      write.csv(data, paste("data_n=",n,".csv", sep=''))
-      
-      return(data)
-    
     },
     # if an error occurs
-    error = function() {
-      setwd(funcdir)
-      print('Data importing went wrong. Try decreasing your sample size.')
-    })
-
+    error = function(err) {
+        setwd(funcdir)
+        print('Data importing went wrong. Try decreasing your sample size.')
+      }
+    )
+  
+  # create dataframe
+  data <- as.data.frame(data)
+  
+  # go back to initial directory 
+  setwd(funcdir)
+  
+  # store data in gz file
+  write.csv(data, paste("data_n=",n,".csv", sep=''))
+  
+  return(data)
+  
 }
