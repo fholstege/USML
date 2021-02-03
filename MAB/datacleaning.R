@@ -4,7 +4,7 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
   Inputs:
     funcdir     directory where functions are saved
     datadir     directory where data can be found
-    nrow        import fixed number of rows from each file
+    nrow        import fixed number of rows from each file (max on my PC: n=250,000)
     rsample     random sampling does not work yet
     
   Purpose:
