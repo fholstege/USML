@@ -30,7 +30,7 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
   }
   
   # Initialize final data matrix
-  data <- matrix(0, nrow=length(files)*n, ncol=3)
+  data <- as.data.frame(matrix(0, nrow=length(files)*n, ncol=3))
   
   # Loop over files in folder
   tryCatch(
