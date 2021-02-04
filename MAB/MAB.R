@@ -23,25 +23,42 @@ pacman::p_load(contextual,
                tidyverse,
                rlist,
                reshape2,
-               utils) 
+               utils,
+               readr,
+               purrr,
+               dplyr) 
 
 # start of each file name with yahoo data
 start_fileName <- "Data/YahooOpenData/ydata-fp-td-clicks-v1_0.2009050"
 
-help(read.table)
+# Generating 900 integers because we'll grab 10 rows for each start, 
+# giving us a total of 9000 rows in the final
+n_grab = 1200000
+n_grab_in_batch <- 10000
+n_batch = n_grab/n_grab_in_batch
+
+start_at  <- floor(runif(n_batch, min = 1, max = (n_grab - n_grab_in_batch) ))
+start_at  <- start_at[order(start_at)]
+
+
+# sort the index sequentially
+start_at  <- start_at[order(start_at)]
+sample_Yahoo_day1  <- map_dfr(start_at, ~read.table(paste0(start_fileName, "1.gz"), nrow= n_grab_in_batch, fill = TRUE, sep = " ",skip = .x))[,2:3] 
+
+
+dfYahoo_test <- read.table(paste0(start_fileName, "1.gz"), nrow=10000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
 
 # for now, just start with the first day
-dfYahoo_day1 <- read.table(paste0(start_fileName, "1.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day2 <- read.table(paste0(start_fileName, "2.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day3 <- read.table(paste0(start_fileName, "3.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day4 <- read.table(paste0(start_fileName, "4.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day5 <- read.table(paste0(start_fileName, "5.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day6 <- read.table(paste0(start_fileName, "6.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day7 <- read.table(paste0(start_fileName, "7.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day8 <- read.table(paste0(start_fileName, "8.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day9 <- read.table(paste0(start_fileName, "9.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day1 <- read.table(paste0(start_fileName, "1.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day2 <- read.table(paste0(start_fileName, "2.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day3 <- read.table(paste0(start_fileName, "3.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day4 <- read.table(paste0(start_fileName, "4.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day5 <- read.table(paste0(start_fileName, "5.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day6 <- read.table(paste0(start_fileName, "6.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day7 <- read.table(paste0(start_fileName, "7.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day8 <- read.table(paste0(start_fileName, "8.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day9 <- read.table(paste0(start_fileName, "9.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
 dfYahoo_day10 <- read.table("Data/YahooOpenData/ydata-fp-td-clicks-v1_0.20090510.gz", nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-colnames(dfYahoo_day1) <- c("Arm", "result")
 
 
 clean_yahooData <- function(df){
@@ -49,7 +66,7 @@ clean_yahooData <- function(df){
   df_necessary <- df[,2:3]
   colnames(df_necessary) <- c("Arm", "result")
   
-  check_if_error <- ifelse(df_necessary$result== 1 || df_necessary$result == 0, TRUE, FALSE)
+  check_if_error <- ifelse(df_necessary$result== 1 | df_necessary$result == 0, TRUE, FALSE)
   
   df_cleaned <- df_necessary[check_if_error,]
   
@@ -57,21 +74,22 @@ clean_yahooData <- function(df){
 }
 
 
+
 dfYahoo_day1_clean <- clean_yahooData(dfYahoo_day1)
 dfYahoo_day2_clean <- clean_yahooData(dfYahoo_day2)
 dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day3)
 dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day4)
-dfYahoo_day1_clean <- clean_yahooData(dfYahoo_day5)
-dfYahoo_day2_clean <- clean_yahooData(dfYahoo_day6)
-dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day7)
-dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day8)
-dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day9)
-dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day10)
+dfYahoo_day5_clean <- clean_yahooData(dfYahoo_day5)
+dfYahoo_day6_clean <- clean_yahooData(dfYahoo_day6)
+dfYahoo_day7_clean <- clean_yahooData(dfYahoo_day7)
+dfYahoo_day8_clean <- clean_yahooData(dfYahoo_day8)
+dfYahoo_day9_clean <- clean_yahooData(dfYahoo_day9)
+dfYahoo_day10_clean <- clean_yahooData(dfYahoo_day10)
 
 
 
 # only grab arm and result data, call columns
-dfBandit_sim <- dfYahoo[,2:3]
+dfBandit_sim <- dfYahoo_test[,2:3]
 colnames(dfBandit_sim) <- c("Arm", "result")
 
 # set seed to ensure reproducability
@@ -129,6 +147,22 @@ policy_UCB <- function(dfResults_arms, fC){
   return(chosen_arm)
 }
 
+
+policy_TS <- function(dfResult, n_arms){
+  
+  n <- rep(100, n_arms)
+  
+  alpha <- dfResult$alpha
+  beta <- dfResult$beta
+  
+  lObs_result <- lapply(n, rbeta, alpha, beta)
+  mean_distribution <- unlist(lapply(lResult, mean))
+  
+  chosen_arm <- which.max(mean_distribution)
+  
+  return(chosen_arm)
+}
+
 ################################################################################
 # C) define function to run simulations
 ################################################################################
@@ -171,6 +205,22 @@ sim_policy <- function(dfBandit, policy_type, exploration,...){
                                     sample_size = n(),
                                     succes_rate = succes_size/sample_size
                           )
+  
+  
+  
+  # if policy type is thompson sampling, add alpha and beta param to the dataframe\
+  if(policy_type == "TS"){
+    
+    start_alpha = 2
+    start_beta = 2
+    
+    dfResult$alpha <- start_alpha + dfResult$succes_size 
+    dfResult$beta <- start_beta + (dfResult$sample_size - dfResult$succes_size)
+    
+  }
+  
+  
+  
   index_best_arm <- which.max(dfResult$succes_rate)
 
   # get the arms and number of arms 
@@ -197,6 +247,10 @@ sim_policy <- function(dfBandit, policy_type, exploration,...){
       
       # pick an arm according to the 'UCB' policy
       chosen_arm <- policy_UCB(dfResult, ...)
+    } else if (policy_type == "TS"){
+      
+      # pick an arm according to the thompson sampling policy
+      chosen_arm <- policy_TS(dfResult, n_arms)
     }
     
     # get dataframe with remaining results for chosen arm, and pick a random instance
@@ -235,7 +289,7 @@ sim_policy <- function(dfBandit, policy_type, exploration,...){
 }
 
 
-sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
+#sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
   
   
   
@@ -293,6 +347,12 @@ result_sim_c_01 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.1)
 result_sim_c_02 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.2)
 result_sim_c_03 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.3)
 
+result_TS<- sim_policy(dfBandit_sim, "TS", 0.2)
+
+
+length(unique(dfYahoo_day1$Arm))
+unique(dfYahoo_day1$Arm)
+
 # visualize the results for epsilon difference 
 dfResult_sims_eps <- data.frame(1:length(result_sim_eps_01$total$result), 
                                   cumsum(result_sim_eps_01$total$result), 
@@ -324,6 +384,21 @@ ggplot(data = dfResult_c_melted, aes(x = index, y = value, col = variable)) +
   scale_color_discrete(name = "C = ", labels = c("10%", "20%", "30%"))
 
 
+# check for thompson sampling 
+dfResult_sims_ts <- data.frame(1:length(result_TS$total$result),
+                               cumsum(result_TS$total$result))
+
+colnames(dfResult_sims_ts) <- c("index", "total_reward")
+dfResult_ts_melted <- melt(dfResult_sims_ts, id.vars="index")
+colnames(dfResult_ts_melted)
+ggplot(data = dfResult_ts_melted, aes(x = index, y = value, col = variable)) +
+  geom_line()+
+  theme_bw()+
+  labs(x = "Time Steps", y = "Total Clicks", col = "Parameter")
+
+create_armChoice_plot(result_TS$total)
+
+
 # get the actual probabilities 
 dfSummary <- dfBandit_sim %>% 
   group_by(Arm)%>%
@@ -343,3 +418,18 @@ policy <- EpsilonGreedyPolicy$new(epsilon = 0.10)
 agent <- Agent$new(policy, bandit) 
 historyEG <- Simulator$new(agent, horizon, simulations)$run() 
 plot(historyEG, type = "arms",      legend_title = 'Epsilon Greedy',      legend_position = "topright",      smooth = TRUE) 
+
+
+n_arms <- 5
+n <- rep(5, n_arms)
+
+alpha <- c(1,2,3, 4, 5)
+beta <- c(5,4,3,2,1)
+
+lObs <- lapply(n, rbeta, alpha, beta)
+mean_distribution <- unlist(lapply(lResult, mean))
+  
+vectorize_rbeta <- function()
+mean(rbeta(100, 7,97))
+
+
