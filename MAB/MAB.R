@@ -26,41 +26,21 @@ pacman::p_load(contextual,
                utils,
                readr,
                purrr,
-               dplyr) 
+               dplyr,
+               furrr) 
+# make sure runs in parallel
+future::plan(multiprocess)
+
 
 # start of each file name with yahoo data
-start_fileName <- "Data/YahooOpenData/ydata-fp-td-clicks-v1_0.2009050"
+start_fileName <- "Data/YahooOpenData/ydata-fp-td-clicks-v1_0.200905"
 
-# Generating 900 integers because we'll grab 10 rows for each start, 
-# giving us a total of 9000 rows in the final
-n_grab = 1200000
-n_grab_in_batch <- 10000
-n_batch = n_grab/n_grab_in_batch
-
-start_at  <- floor(runif(n_batch, min = 1, max = (n_grab - n_grab_in_batch) ))
-start_at  <- start_at[order(start_at)]
+#specify how many to grab
+n_grab = 1000
+n_grab_in_batch <- 100
 
 
-# sort the index sequentially
-start_at  <- start_at[order(start_at)]
-sample_Yahoo_day1  <- map_dfr(start_at, ~read.table(paste0(start_fileName, "1.gz"), nrow= n_grab_in_batch, fill = TRUE, sep = " ",skip = .x))[,2:3] 
-
-
-dfYahoo_test <- read.table(paste0(start_fileName, "1.gz"), nrow=10000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-
-# for now, just start with the first day
-dfYahoo_day1 <- read.table(paste0(start_fileName, "1.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day2 <- read.table(paste0(start_fileName, "2.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day3 <- read.table(paste0(start_fileName, "3.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day4 <- read.table(paste0(start_fileName, "4.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day5 <- read.table(paste0(start_fileName, "5.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day6 <- read.table(paste0(start_fileName, "6.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day7 <- read.table(paste0(start_fileName, "7.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day8 <- read.table(paste0(start_fileName, "8.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day9 <- read.table(paste0(start_fileName, "9.gz"), nrow=1200000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-dfYahoo_day10 <- read.table("Data/YahooOpenData/ydata-fp-td-clicks-v1_0.20090510.gz", nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
-
-
+# function for cleaning data
 clean_yahooData <- function(df){
   
   df_necessary <- df[,2:3]
@@ -73,23 +53,28 @@ clean_yahooData <- function(df){
   return(df_cleaned)
 }
 
+# for all the files
+list_file_ends <- c("01.gz", "02.gz", "03.gz", "04.gz", "05.gz", "06.gz", "07.gz", "08.gz", "09.gz", "10.gz")
+list_file_names <- paste0(rep(start_fileName, 10),list_file_ends)
 
+#function to grab random sample
+get_random_sample_fromFile <- function(fileName, n_grab, n_grab_in_batch){
+  
+  # get how many per batch 
+  n_batch = n_grab/n_grab_in_batch
+  
+  # where to start at (random), ordered
+  start_at  <- floor(runif(n_batch, min = 1, max = (n_grab - n_grab_in_batch) ))
+  start_at  <- start_at[order(start_at)]
+  
+  dfRandom <- future_map_dfr(start_at, ~clean_yahooData(read.table(fileName, nrow= n_grab_in_batch, fill = TRUE, sep = " ",skip = .x))) 
+  
+  return(dfRandom)
+  
+}
 
-dfYahoo_day1_clean <- clean_yahooData(dfYahoo_day1)
-dfYahoo_day2_clean <- clean_yahooData(dfYahoo_day2)
-dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day3)
-dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day4)
-dfYahoo_day5_clean <- clean_yahooData(dfYahoo_day5)
-dfYahoo_day6_clean <- clean_yahooData(dfYahoo_day6)
-dfYahoo_day7_clean <- clean_yahooData(dfYahoo_day7)
-dfYahoo_day8_clean <- clean_yahooData(dfYahoo_day8)
-dfYahoo_day9_clean <- clean_yahooData(dfYahoo_day9)
-dfYahoo_day10_clean <- clean_yahooData(dfYahoo_day10)
-
-
-
-# only grab arm and result data, call columns
-dfBandit_sim <- dfYahoo_test[,2:3]
+list_random_samples <- lapply(list_file_names, get_random_sample_fromFile, n_grab = n_grab, n_grab_in_batch = n_grab_in_batch)
+dfBandit_sim <- list.rbind(list_random_samples)
 colnames(dfBandit_sim) <- c("Arm", "result")
 
 # set seed to ensure reproducability
@@ -185,10 +170,10 @@ policy_TS <- function(dfResult, n_arms){
 #
 #   
 ###
-sim_policy <- function(dfBandit, policy_type, exploration,...){
+sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,...){
   
   ## Part 1: set parameters 
-  n_obs <- length(dfBandit$result)
+  n_obs <- size_experiment
   n_explore <- round(n_obs* exploration,0)
   n_exploit <- n_obs - n_explore
   
@@ -259,6 +244,9 @@ sim_policy <- function(dfBandit, policy_type, exploration,...){
     # obtain the result, remove this from the overall remaining data
     index_result <- sample(1:length(chosen_arm_df$result), 1)
     result <- chosen_arm_df[index_result,]$result
+    
+    # remove said result in the data, and allocate new dataframe without that result back to list of dataframes
+    ldf_arms[[chosen_arm]]<- chosen_arm_df[-index_result,]
 
     # get vector of results (arm, result)
     vResult <- c(dfResult[chosen_arm,]$Arm, result)
