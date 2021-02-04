@@ -22,13 +22,53 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(contextual,
                tidyverse,
                rlist,
-               reshape2) 
+               reshape2,
+               utils) 
 
 # start of each file name with yahoo data
 start_fileName <- "Data/YahooOpenData/ydata-fp-td-clicks-v1_0.2009050"
 
+help(read.table)
+
 # for now, just start with the first day
-dfYahoo <- read.table(paste0(start_fileName, "1.gz"), nrow=10000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day1 <- read.table(paste0(start_fileName, "1.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day2 <- read.table(paste0(start_fileName, "2.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day3 <- read.table(paste0(start_fileName, "3.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day4 <- read.table(paste0(start_fileName, "4.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day5 <- read.table(paste0(start_fileName, "5.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day6 <- read.table(paste0(start_fileName, "6.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day7 <- read.table(paste0(start_fileName, "7.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day8 <- read.table(paste0(start_fileName, "8.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day9 <- read.table(paste0(start_fileName, "9.gz"), nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+dfYahoo_day10 <- read.table("Data/YahooOpenData/ydata-fp-td-clicks-v1_0.20090510.gz", nrow=1000000,header = FALSE, fill = TRUE, sep = " ")[,1:3]
+colnames(dfYahoo_day1) <- c("Arm", "result")
+
+
+clean_yahooData <- function(df){
+  
+  df_necessary <- df[,2:3]
+  colnames(df_necessary) <- c("Arm", "result")
+  
+  check_if_error <- ifelse(df_necessary$result== 1 || df_necessary$result == 0, TRUE, FALSE)
+  
+  df_cleaned <- df_necessary[check_if_error,]
+  
+  return(df_cleaned)
+}
+
+
+dfYahoo_day1_clean <- clean_yahooData(dfYahoo_day1)
+dfYahoo_day2_clean <- clean_yahooData(dfYahoo_day2)
+dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day3)
+dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day4)
+dfYahoo_day1_clean <- clean_yahooData(dfYahoo_day5)
+dfYahoo_day2_clean <- clean_yahooData(dfYahoo_day6)
+dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day7)
+dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day8)
+dfYahoo_day3_clean <- clean_yahooData(dfYahoo_day9)
+dfYahoo_day4_clean <- clean_yahooData(dfYahoo_day10)
+
+
 
 # only grab arm and result data, call columns
 dfBandit_sim <- dfYahoo[,2:3]
@@ -200,7 +240,6 @@ sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
   
   
   
-}
 
 ################################################################################
 # D) Define functions to analyse the results (plots) 
