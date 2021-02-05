@@ -37,7 +37,7 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
       colnames(rawdata) <- c("Arm", "Reward")
       
       # filter out wrong observations
-      data <- data[which(data$Reward == 0 | data$Reward == 1),]
+      data <- rawdata[which(rawdata$Reward == 0 | rawdata$Reward == 1),]
       
       # take a random sample of size rsample.size
       r.ind <- sample(nrow(data), size = rsample.size)
