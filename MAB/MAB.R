@@ -6,6 +6,7 @@
 #           B) Define policy functions
 #           C) Define functions to run simulations 
 #           D) Define functions to analyse the results (plots) 
+#           E) Run simulations to get results per method 
 #           E) Compare to package
 #################
 
@@ -28,55 +29,36 @@ pacman::p_load(contextual,
                purrr,
                dplyr,
                furrr,
-               Rfast) 
+               Rfast,
+               devtools,
+               parallel,
+               TTR) 
 # make sure runs in parallel
 future::plan(multiprocess)
 
+# add repository to make mclapply() run in parallel (only necessary on windows)
+install_github('nathanvan/parallelsugar')
+library(parallelsugar)
+
 
 # start of each file name with yahoo data
-start_fileName <- "Data/YahooOpenData/ydata-fp-td-clicks-v1_0.200905"
+dfArticles <- read.csv("Data/all_data_n=10000000.csv")[,2:3]
+colnames(dfArticles)<- c("Arm", "result")
+n_per_day <- 1000000
 
-#specify how many to grab
-n_grab = 1000
-n_grab_in_batch <- 100
+# create day column
+day <- c()
 
-
-# function for cleaning data
-clean_yahooData <- function(df){
+for(i in 1:10){
   
-  df_necessary <- df[,2:3]
-  colnames(df_necessary) <- c("Arm", "result")
-  
-  check_if_error <- ifelse(df_necessary$result== 1 | df_necessary$result == 0, TRUE, FALSE)
-  
-  df_cleaned <- df_necessary[check_if_error,]
-  
-  return(df_cleaned)
+  day <- c(day, rep(i,n_per_day))
 }
 
-# for all the files
-list_file_ends <- c("01.gz", "02.gz", "03.gz", "04.gz", "05.gz", "06.gz", "07.gz", "08.gz", "09.gz", "10.gz")
-list_file_names <- paste0(rep(start_fileName, 10),list_file_ends)
+dfArticles$day <- day
 
-#function to grab random sample
-get_random_sample_fromFile <- function(fileName, n_grab, n_grab_in_batch){
-  
-  # get how many per batch 
-  n_batch = n_grab/n_grab_in_batch
-  
-  # where to start at (random), ordered
-  start_at  <- floor(runif(n_batch, min = 1, max = (n_grab - n_grab_in_batch) ))
-  start_at  <- start_at[order(start_at)]
-  
-  dfRandom <- future_map_dfr(start_at, ~clean_yahooData(read.table(fileName, nrow= n_grab_in_batch, fill = TRUE, sep = " ",skip = .x))) 
-  
-  return(dfRandom)
-  
-}
+# create small df to test
+df_small_sim <- dfArticles[sample(1:10000000, 10000),]
 
-list_random_samples <- lapply(list_file_names, get_random_sample_fromFile, n_grab = n_grab, n_grab_in_batch = n_grab_in_batch)
-dfBandit_sim <- list.rbind(list_random_samples)
-colnames(dfBandit_sim) <- c("Arm", "result")
 
 # set seed to ensure reproducability
 set.seed(123)
@@ -132,9 +114,27 @@ policy_UCB <- function(dfResults_arms, fC){
   chosen_arm <- which.max(UCB_score)
   return(chosen_arm)
 }
+###
+# policy_TS: picks the arm according to Thompson sampling
+# 
+# Arguments: 
+#      dfResults_arms: a dataframe with the following columns
+#           Arms: contains the names of the arms used in the simulation                      
+#           sample_size: how many times, at that point, the arm has been pulled
+#           succes_rate: the % that arm has yielded a good result
+#      n_arms: number of arms
+#      eps: % of random arms
+#
+# Output:
+#   chosen arm: index of the arm chosen
+#
+###
 
-
-policy_TS <- function(dfResult, n_arms){
+policy_TS <- function(dfResult, n_arms,index_arms ,eps){
+  
+  if (runif(1,min=0,max=1) < eps){
+    chosen_arm <- sample(index_arms,1)
+  }else{
   
   n <- rep(100, n_arms)
   
@@ -142,12 +142,14 @@ policy_TS <- function(dfResult, n_arms){
   beta <- dfResult$beta
   
   lObs_result <- lapply(n, rbeta, alpha, beta)
-  mean_distribution <- unlist(lapply(lResult, mean))
+  mean_distribution <- unlist(lapply(lObs_result, mean))
   
   chosen_arm <- which.max(mean_distribution)
+  }
   
   return(chosen_arm)
 }
+
 
 ################################################################################
 # C) define function to run simulations
@@ -237,7 +239,7 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     } else if (policy_type == "TS"){
       
       # pick an arm according to the thompson sampling policy
-      chosen_arm <- policy_TS(dfResult, n_arms)
+      chosen_arm <- policy_TS(dfResult=dfResult, n_arms= length(Arms), index_arms=index_arms,...)
     }
     
     # get dataframe with remaining results for chosen arm, and pick a random instance
@@ -291,50 +293,125 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
 }
 
 
-sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
+sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,day_split=TRUE,...){
   
-
-  # get n of observations, and get how many you want in sim
-  n_obs <- length(dfBandit$result)
-  n_in_sim <- n_obs/n_sim
-  
-  # get list of the dataframes - same dataframe, n_sim times
-  list_dfBandit_exp <- rep(list(dfBandit),n_sim)
+  if(day_split){
     
-  # get result 10x
-  result_per_random_sample <- lapply(list_dfBandit_exp, sim_policy, policy_type = policy_type, exploration = exploration, size_experiment=n_in_sim,...)
+    ldf_perDay <- split(dfBandit[,1:2] , f = dfBandit$day )
+    list_dfBandit_exp <- rep(ldf_perDay,n_sim/length(ldf_perDay))
+
+  }else{
+    # get list of the dataframes - same dataframe, n_sim times
+    list_dfBandit_exp <- rep(list(dfBandit),n_sim)
+    
+  }
+
+  # get result n_sim times 
+  result_per_random_sample <- mclapply(list_dfBandit_exp, 
+                                       sim_policy,
+                                       policy_type = policy_type, 
+                                       exploration = exploration, 
+                                       size_experiment=n_per_sim, 
+                                       mc.cores = detectCores()-1,...)
   
   return(result_per_random_sample)
 }
+
+sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
   
+
+  if(policy_type == "greedy"| policy_type == "TS"){
+    
+
+    results_params <- apply(dfParams, MARGIN=1,function(row_param){
+      print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and epsilon: ", row_param[2]))
+      
+      # run the sim with exploration and epsilon param
+      exploration_sim <- row_param[1]
+      eps_sim <- row_param[2]
+      result_for_param <- sim_experiment(dfBandit, n_sim, n_per_sim, policy_type, exploration = exploration_sim, eps = eps_sim)
+      
+      # get the aggregate result
+      aggregate_result <- calc_rewards_sims(result_for_param)
+      aggregate_result$param <- paste0("exploration=", exploration_sim, ", epsilon=", eps_sim)
+      
+      # save details and parameters
+      details_result <- result_for_param
+      params <- row_param
+      
+      results <- list(aggregate = aggregate_result, details = details_result, params = params)
+      
+      return(results)
+    })
+      
+  }else if (policy_type == "UCB"){
+    
+    results_params <- apply(dfParams, MARGIN=1,function(row_param){
+      print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and C: ", row_param[2]))
+      
+      # run the sim with exploration and C param
+      exploration_sim <- row_param[1]
+      C_sim <- row_param[2]
+      result_for_param <- sim_experiment(dfBandit, n_sim, n_per_sim, policy_type, exploration = exploration_sim, fC = C_sim)
+      
+      # get the aggregate result
+      aggregate_result <- calc_rewards_sims(result_for_param)
+      aggregate_result$param <- paste0("exploration=", exploration_sim, ", C=", C_sim)
+      
+      # save details and parameters
+      details_result <- result_for_param
+      params <- row_param
+      
+      results <- list(aggregate = aggregate_result, details = details_result, params = params)
+      
+      return(results)
+    })
+    
+    
+    
+  }
   
+  return(results_params)
+  
+
+}
+
+
+
   
   
 
 ################################################################################
-# D) Define functions to analyse the results (plots) 
+# D) Define functions to analyse the results  
 ################################################################################
 
 create_arm_dummy <- function(arm_name, df){
   return(ifelse(df$Arm == arm_name, 1,0))
 }
 
-
-
-create_armChoice_plot <- function(dfResult){
+calc_chosenArm_experiment <- function(df){
   
   # get per time step the chosen arm 
-  arms <- unique(dfResult$Arm)
-  lResult_dummies <- lapply(arms, create_arm_dummy, df=dfResult)
+  arms <- unique(df$Arm)
+  lResult_dummies <- lapply(arms, create_arm_dummy, df=df)
   count_chosen <- list.cbind(lResult_dummies)
   
   # calculate the % chosen per arm over time
   cumsum_chosen <- apply(count_chosen, MARGIN=2, cumsum)
-  index_arms <- 1:length(dfResult$result)
+  index_arms <- 1:length(df$result)
   dfPerc_chosen <- data.frame(index_arms,cumsum_chosen/index_arms)
   
-  # add column names, melt dataframe for ggplot viz
+  # change colnames
   colnames(dfPerc_chosen) <- c("index", arms)
+  
+  
+  return(dfPerc_chosen)
+  
+}
+
+create_armChoice_plot <- function(dfPerc_chosen){
+
+  # add column names, melt dataframe for ggplot viz
   dfPerc_chosen_melted <- melt(dfPerc_chosen, id.vars = "index")
 
   # define ggplot visualization
@@ -349,33 +426,84 @@ create_armChoice_plot <- function(dfResult){
 }
 
 
+calc_rewards_sims <- function(result_sim){
+  
 
-n_sims = 100
-result_sims <- sim_experiment(dfBandit_sim, n_sims,"greedy", 0.3, eps=0.1)
+  # get list with all the results
+  lReward_sims <- lapply(result_sim, function(x){return(x$total$result)})
 
-lReward_sims <- lapply(result_sims, function(x){return(x$total$result)})
-dfTot_reward_sims <- list.cbind(lReward_sims)
-dfTot_cumReward <- apply(dfTot_reward_sims, 2, cumsum)
-dfAvg_cumReward <- apply(dfTot_cumReward, 1, mean)
+  # get avg. total reward
+  dfTot_reward_sims <- list.cbind(lReward_sims)
+  dfTot_cumReward <- apply(dfTot_reward_sims, 2, cumsum)
+  dfAvg_cumReward <- apply(dfTot_cumReward, 1, mean)
+  
+  sample_size <- 1:length(dfAvg_cumReward)
+  
+  dfSD <- apply(dfTot_cumReward, 1, sd)
 
-ind_5perc <- n_sims/20
-ind_95perc <- n_sims - (n_sims/20)
+  lower_bound <- pmax(dfAvg_cumReward - (1.96 * dfSD/sqrt(sample_size)),0)
+  upper_bound <- dfAvg_cumReward + (1.96 * dfSD/sqrt(sample_size))
+  
+  
+  # return these in dataframe
+  dfSim_plot <- data.frame(index = 1:length(dfAvg_cumReward), avg_cumReward = dfAvg_cumReward, lower = lower_bound, upper = upper_bound)
+  
+  return(dfSim_plot)
+  
+  
+}
 
 
-lower_bound <- apply(dfTot_cumReward, 1, nth, k=ind_5perc)
-upper_bound <- apply(dfTot_cumReward, 1, nth, k=ind_95perc)
+n_sims = 10
+result_sims <- sim_experiment(df_small_sim, n_sim = 10, n_per_sim = 100,"greedy", 0.3, eps=0.1, day_split = TRUE)
+
+dfReward_sims <- calc_rewards_sims(result_sims)
+dfChosen_arms_1 <- calc_chosenArm_experiment(result_sims[[1]]$total)
+
+create_armChoice_plot(dfChosen_arms_1)
+
+vEps <- c(0.2,0.1,0.05)
+vC <- c(0.3,0.2,0.1)
+vExploration <- c(0.1)#0.2,0.3)
+
+dfParams_eps <- expand.grid(vExploration, vEps)
+colnames(dfParams_eps) <- c("exploration", "eps")
+
+dfParam_UCB <-  expand.grid(vExploration, vC)
+colnames(dfParams_eps) <- c("exploration", "C")
 
 
-dfSim_plot <- data.frame(index = 1:1000, avg_cumReward = dfAvg_cumReward, lower = lower_bound, upper = upper_bound)
+param_results_eps <- sim_params(df_small_sim, n_sims, 100, "greedy", dfParams_eps)
 
 
-ggplot(data = dfSim_plot, aes(x =index , y = avg_cumReward)) +
+dfAggregate_results_eps <- rbind(param_results_eps[[1]]$aggregate, param_results_eps[[2]]$aggregate, param_results_eps[[3]]$aggregate)
+
+ggplot(data = dfAggregate_results_eps, aes(x =index, y = avg_cumReward, col=param)) +
   geom_line()+
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70", alpha = 0.2) +
+  geom_ribbon(aes(ymax = upper, ymin = lower, fill = param), alpha=0.1, colour = NA)+
   theme_bw()+
-  labs(x = "Time Steps", y = "Avg. Total Clicks")
+  labs(x = "Time Steps", y = "Avg. Total Clicks", title="Greedy,  exploration = 10%")
 
 
+
+param_results_C <- sim_params(df_small_sim, n_sims, 100, "UCB", dfParam_UCB)
+
+dfAggregate_results_C <- rbind(param_results_C[[1]]$aggregate, param_results_C[[2]]$aggregate, param_results_C[[3]]$aggregate)
+
+ggplot(data = dfAggregate_results_C, aes(x =index, y = avg_cumReward, col=param)) +
+  geom_line()+
+  geom_ribbon(aes(ymax = upper, ymin = lower, fill = param), alpha=0.1, colour = NA)+
+  theme_bw()+
+  labs(x = "Time Steps", y = "Avg. Total Clicks", title="UCB,  exploration = 10%")
+
+
+
+param_results_TS <- sim_params(df_small_sim, n_sims, 100, "TS", dfParams_eps)
+
+
+
+help(runSD)
+help("rollapply")
 
 #check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
 result_sim_eps_01 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.1)
@@ -459,17 +587,5 @@ agent <- Agent$new(policy, bandit)
 historyEG <- Simulator$new(agent, horizon, simulations)$run() 
 plot(historyEG, type = "arms",      legend_title = 'Epsilon Greedy',      legend_position = "topright",      smooth = TRUE) 
 
-
-n_arms <- 5
-n <- rep(5, n_arms)
-
-alpha <- c(1,2,3, 4, 5)
-beta <- c(5,4,3,2,1)
-
-lObs <- lapply(n, rbeta, alpha, beta)
-mean_distribution <- unlist(lapply(lResult, mean))
-  
-vectorize_rbeta <- function()
-mean(rbeta(100, 7,97))
 
 
