@@ -27,7 +27,8 @@ pacman::p_load(contextual,
                readr,
                purrr,
                dplyr,
-               furrr) 
+               furrr,
+               Rfast) 
 # make sure runs in parallel
 future::plan(multiprocess)
 
@@ -170,13 +171,18 @@ policy_TS <- function(dfResult, n_arms){
 #
 #   
 ###
-sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,...){
+sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,only_total=TRUE,...){
+  
+  
   
   ## Part 1: set parameters 
   n_obs <- size_experiment
   n_explore <- round(n_obs* exploration,0)
   n_exploit <- n_obs - n_explore
   
+  # get random of size
+  dfBandit <- dfBandit[sample(1:n_obs, size_experiment), ]
+
   ## part 2: exploration phase 
   # Set the results for the exploration phase by finding a certain number of random observations
   index_exploration <- sample(1:n_obs,n_explore)
@@ -191,8 +197,6 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
                                     succes_rate = succes_size/sample_size
                           )
   
-  
-  
   # if policy type is thompson sampling, add alpha and beta param to the dataframe\
   if(policy_type == "TS"){
     
@@ -203,8 +207,6 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     dfResult$beta <- start_beta + (dfResult$sample_size - dfResult$succes_size)
     
   }
-  
-  
   
   index_best_arm <- which.max(dfResult$succes_rate)
 
@@ -240,17 +242,25 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     
     # get dataframe with remaining results for chosen arm, and pick a random instance
     chosen_arm_df <- ldf_arms[[chosen_arm]]
+    
 
     # obtain the result, remove this from the overall remaining data
     index_result <- sample(1:length(chosen_arm_df$result), 1)
     result <- chosen_arm_df[index_result,]$result
     
+    if(length(result) == 0){
+      print(i)
+      cat("You have run out of observations from a chosen arm - decrease the size of the experiment, or increase the size of the dataset")
+      break
+    }
+    
     # remove said result in the data, and allocate new dataframe without that result back to list of dataframes
-    ldf_arms[[chosen_arm]]<- chosen_arm_df[-index_result,]
+    #ldf_arms[[chosen_arm]]<- chosen_arm_df[-index_result,]
 
     # get vector of results (arm, result)
     vResult <- c(dfResult[chosen_arm,]$Arm, result)
     dfResult_exploit[i,] <- vResult
+    
     
     # update the overall results data
     dfResult[chosen_arm,]$succes_size <- dfResult[chosen_arm,]$succes_size +  result
@@ -265,19 +275,37 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
 
   }
   
-  # save data in list
-  results <- list(Overall = dfResult, 
-                  after_explore = dfResult_exploit, 
-                  before_explore = dfResult_explore, 
-                  total = rbind(dfResult_explore,dfResult_exploit),
-                  total_succes_rate = sum(dfResult$succes_size)/sum(dfResult$sample_size))
+  if(only_total){
+    results <- list(total = rbind(dfResult_explore,dfResult_exploit))
+  }else{
+    # save data in list
+    results <- list(Overall = dfResult, 
+                    after_explore = dfResult_exploit, 
+                    before_explore = dfResult_explore, 
+                    total = rbind(dfResult_explore,dfResult_exploit),
+                    total_succes_rate = sum(dfResult$succes_size)/sum(dfResult$sample_size))
+  }
 
   return(results)
   
 }
 
 
-#sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
+sim_experiment <- function(dfBandit, n_sim, policy_type, exploration,...){
+  
+
+  # get n of observations, and get how many you want in sim
+  n_obs <- length(dfBandit$result)
+  n_in_sim <- n_obs/n_sim
+  
+  # get list of the dataframes - same dataframe, n_sim times
+  list_dfBandit_exp <- rep(list(dfBandit),n_sim)
+    
+  # get result 10x
+  result_per_random_sample <- lapply(list_dfBandit_exp, sim_policy, policy_type = policy_type, exploration = exploration, size_experiment=n_in_sim,...)
+  
+  return(result_per_random_sample)
+}
   
   
   
@@ -290,6 +318,7 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
 create_arm_dummy <- function(arm_name, df){
   return(ifelse(df$Arm == arm_name, 1,0))
 }
+
 
 
 create_armChoice_plot <- function(dfResult){
@@ -321,8 +350,31 @@ create_armChoice_plot <- function(dfResult){
 
 
 
+n_sims = 100
+result_sims <- sim_experiment(dfBandit_sim, n_sims,"greedy", 0.3, eps=0.1)
 
- 
+lReward_sims <- lapply(result_sims, function(x){return(x$total$result)})
+dfTot_reward_sims <- list.cbind(lReward_sims)
+dfTot_cumReward <- apply(dfTot_reward_sims, 2, cumsum)
+dfAvg_cumReward <- apply(dfTot_cumReward, 1, mean)
+
+ind_5perc <- n_sims/20
+ind_95perc <- n_sims - (n_sims/20)
+
+
+lower_bound <- apply(dfTot_cumReward, 1, nth, k=ind_5perc)
+upper_bound <- apply(dfTot_cumReward, 1, nth, k=ind_95perc)
+
+
+dfSim_plot <- data.frame(index = 1:1000, avg_cumReward = dfAvg_cumReward, lower = lower_bound, upper = upper_bound)
+
+
+ggplot(data = dfSim_plot, aes(x =index , y = avg_cumReward)) +
+  geom_line()+
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70", alpha = 0.2) +
+  theme_bw()+
+  labs(x = "Time Steps", y = "Avg. Total Clicks")
+
 
 
 #check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
