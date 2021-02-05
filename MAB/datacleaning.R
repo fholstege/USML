@@ -40,8 +40,8 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
       data <- data[which(data$Reward == 0 | data$Reward == 1),]
       
       # take a random sample of size rsample.size
-      r.ind <- sample(data, size = rsample.size)
-      data <- data[ind,]
+      r.ind <- sample(nrow(data), size = rsample.size)
+      data <- data[r.ind,]
       
       # store data in pre-created matrix
       df[((i-1)*rsample.size + 1):(i*rsample.size), ] <- as.matrix(data)
