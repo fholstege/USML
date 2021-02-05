@@ -54,7 +54,7 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
   setwd(funcdir)
   
   # store data in gz file
-  write.csv(df, paste("all_data",n,".csv", sep=''))
+  write.csv(df, paste("all_data.csv", sep=''))
   
   return(df)
   
