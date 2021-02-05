@@ -1,11 +1,11 @@
 
-data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
+data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
   '
   Inputs:
-    funcdir     directory where functions are saved
-    datadir     directory where data can be found
-    nrow        import fixed number of rows from each file (max on my PC: n=250,000)
-    rsample     random sampling does not work yet
+    funcdir         directory where functions are saved
+    datadir         directory where data can be found
+    nrow            import fixed number of rows from each file (max on my PC: n=250,000)
+    rsample.size    random sample of data per file
     
   Purpose:
     Import data from multiple files and store as csv
@@ -20,48 +20,42 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample = NULL) {
   # Obtain files from folder
   files <- grep(".*gz", list.files(), value=T)
   
-  # Determine file sample size
-  if (is.null(nrow) & is.null(rsample)) {
-    n <- 10000
-  } else if (is.null(rsample)) {
-    n <- nrow
-  } else {
-    n <- rsample
-  }
-  
   # Initialize final data matrix
-  data <- as.data.frame(matrix(0, nrow=length(files)*n, ncol=3))
-  
+  df <- as.data.frame(matrix(0, nrow=length(files)*rsample.size, ncol=2))
+
   # Loop over files in folder
-  tryCatch(
-    expr = 
-      {i <- 0
-      for (file in files) {
-        i <- i + 1
-        
-        # load data file
-        rawdata <- read.table(file, header = F, sep = " ", fill = T, nrows = n)[,1:3] 
-    
-        # store data in pre-created matrix
-        data[((i-1)*n + 1):(i*n), ] <- as.matrix(rawdata)
-      }
-    },
-    # if an error occurs
-    error = function(err) {
-        setwd(funcdir)
-        print('Data importing went wrong. Try decreasing your sample size.')
-      }
-    )
+  i <- 0
+    for (file in files) {
+      i <- i + 1
+      print(i)
+      
+      # load data file
+      rawdata <- read.table(file, header = F, sep = " ", colClasses = c("NULL", "character", "character", rep("NULL", 147)),
+                            fill=TRUE, blank.lines.skip = FALSE) 
+      
+      # set new column names
+      colnames(rawdata) <- c("Arm", "Reward")
+      
+      # filter out wrong observations
+      data <- data[which(data$V3 == 0 | data$V3 == 1),]
+      
+      # take a random sample of size rsample.size
+      r.ind <- sample(data, size = rsample.size)
+      data <- data[ind,]
+      
+      # store data in pre-created matrix
+      df[((i-1)*rsample.size + 1):(i*rsample.size), ] <- as.matrix(data)
+    }
   
   # create dataframe
-  data <- as.data.frame(data)
+  df <- as.data.frame(df)
   
   # go back to initial directory 
   setwd(funcdir)
   
   # store data in gz file
-  write.csv(data, paste("data_n=",n,".csv", sep=''))
+  write.csv(df, paste("all_data",n,".csv", sep=''))
   
-  return(data)
+  return(df)
   
 }
