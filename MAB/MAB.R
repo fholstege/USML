@@ -7,7 +7,7 @@
 #           C) Define functions to run simulations 
 #           D) Define functions to analyse the results (plots) 
 #           E) Run simulations to get results per method 
-#           E) Compare to package
+#           F) Compare to package
 #################
 
 
@@ -58,7 +58,7 @@ dfArticles$day <- day
 
 # create small df to test
 df_small_sim <- dfArticles[sample(1:10000000, 10000),]
-
+dfSims <- dfArticles[sample(1:10000000, 1000000),]
 
 # set seed to ensure reproducability
 set.seed(123)
@@ -78,7 +78,7 @@ set.seed(123)
 #   Output:
 #     chosen_arm; index of the arm chosen
 ###
-policy_greedy <- function(eps, index_arms, index_best_arm){
+policy_greedy <- function(index_arms, index_best_arm, eps){
   
   if (runif(1,min=0,max=1) < eps){
     chosen_arm <- sample(index_arms,1)
@@ -147,6 +147,7 @@ policy_TS <- function(dfResult, n_arms,index_arms ,eps){
   chosen_arm <- which.max(mean_distribution)
   }
   
+
   return(chosen_arm)
 }
 
@@ -173,21 +174,26 @@ policy_TS <- function(dfResult, n_arms,index_arms ,eps){
 #
 #   
 ###
-sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,only_total=TRUE,...){
-  
-  
+sim_policy <- function(dfBandit, policy_type, exploration,size_experiment,only_total=TRUE,...){
   
   ## Part 1: set parameters 
-  n_obs <- size_experiment
-  n_explore <- round(n_obs* exploration,0)
-  n_exploit <- n_obs - n_explore
+  n_obs <- nrow(dfBandit)
   
+  if(size_experiment > n_obs){
+    print(paste0("The indicated size of the experiment is bigger than the data provided - shrinking to size ", n_obs))
+    size_experiment <- n_obs
+  }
+  
+  n_explore <- round(size_experiment* exploration,0)
+  n_exploit <- size_experiment - n_explore
+
   # get random of size
   dfBandit <- dfBandit[sample(1:n_obs, size_experiment), ]
 
   ## part 2: exploration phase 
   # Set the results for the exploration phase by finding a certain number of random observations
-  index_exploration <- sample(1:n_obs,n_explore)
+  index_exploration <- sample(1:size_experiment,n_explore)
+  
   dfResult_explore <- dfBandit[index_exploration,]
   dfBandit_postExplore <- dfBandit[-index_exploration,]
   
@@ -213,11 +219,15 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
   index_best_arm <- which.max(dfResult$succes_rate)
 
   # get the arms and number of arms 
-  Arms <- unique(dfResult$Arm)
-  index_arms <- 1:length(Arms)
-  
+  Arms <- unique(dfResult_explore$Arm)
+  print(1:length(Arms))
+
   # get list of dataframes (one per arm & its results) for remainder
-  ldf_arms <- split(dfBandit_postExplore , f = dfBandit_postExplore$Arm )
+  ldf_arms <- split(dfBandit_postExplore , f = dfResult_explore$Arm )
+  index_arms <- 1:length(ldf_arms)
+  
+  print(index_arms)
+  
   
   # create vector to save remainder of results
   dfResult_exploit <-  data.frame(matrix(NA, nrow = n_exploit, ncol = 2))
@@ -239,8 +249,13 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     } else if (policy_type == "TS"){
       
       # pick an arm according to the thompson sampling policy
-      chosen_arm <- policy_TS(dfResult=dfResult, n_arms= length(Arms), index_arms=index_arms,...)
+      chosen_arm <- policy_TS(dfResult=dfResult, n_arms= length(index_arms), index_arms=index_arms,...)
     }
+    
+    print(length(ldf_arms))
+    print(chosen_arm)
+ 
+    
     
     # get dataframe with remaining results for chosen arm, and pick a random instance
     chosen_arm_df <- ldf_arms[[chosen_arm]]
@@ -252,7 +267,8 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     
     if(length(result) == 0){
       print(i)
-      cat("You have run out of observations from a chosen arm - decrease the size of the experiment, or increase the size of the dataset")
+      print("You have run out of observations from a chosen arm - decrease the size of the experiment, or increase the size of the dataset")
+      index_arms <- index_arms[-chosen_arm]
       break
     }
     
@@ -268,6 +284,14 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
     dfResult[chosen_arm,]$succes_size <- dfResult[chosen_arm,]$succes_size +  result
     dfResult[chosen_arm,]$sample_size <- dfResult[chosen_arm,]$sample_size + 1
     dfResult[chosen_arm,]$succes_rate <- dfResult[chosen_arm,]$succes_size/dfResult[chosen_arm,]$sample_size
+    
+    # if policy type is thompson sampling, add alpha and beta param to the dataframe\
+    if(policy_type == "TS"){
+      
+      dfResult$alpha <- start_alpha + dfResult$succes_size 
+      dfResult$beta <- start_beta + (dfResult$sample_size - dfResult$succes_size)
+      
+    }
     
     # update the best arm
     index_best_arm <- which.max(dfResult$succes_rate)
@@ -292,9 +316,8 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment=10000,
   
 }
 
-
 sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,day_split=TRUE,...){
-  
+
   if(day_split){
     
     ldf_perDay <- split(dfBandit[,1:2] , f = dfBandit$day )
@@ -305,6 +328,7 @@ sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,
     list_dfBandit_exp <- rep(list(dfBandit),n_sim)
     
   }
+  
 
   # get result n_sim times 
   result_per_random_sample <- mclapply(list_dfBandit_exp, 
@@ -318,9 +342,9 @@ sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,
 }
 
 sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
-  
 
-  if(policy_type == "greedy"| policy_type == "TS"){
+
+  if(policy_type == "greedy"|| policy_type == "TS"){
     
 
     results_params <- apply(dfParams, MARGIN=1,function(row_param){
@@ -329,6 +353,8 @@ sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
       # run the sim with exploration and epsilon param
       exploration_sim <- row_param[1]
       eps_sim <- row_param[2]
+
+      
       result_for_param <- sim_experiment(dfBandit, n_sim, n_per_sim, policy_type, exploration = exploration_sim, eps = eps_sim)
       
       # get the aggregate result
@@ -453,30 +479,39 @@ calc_rewards_sims <- function(result_sim){
   
 }
 
+################################################################################
+# E) Run simulations to get results
+################################################################################
 
-n_sims = 10
-result_sims <- sim_experiment(df_small_sim, n_sim = 10, n_per_sim = 100,"greedy", 0.3, eps=0.1, day_split = TRUE)
+# first, define parameters for simulation
+n_sims = 100
+n_per_sim = 1000
 
-dfReward_sims <- calc_rewards_sims(result_sims)
-dfChosen_arms_1 <- calc_chosenArm_experiment(result_sims[[1]]$total)
-
-create_armChoice_plot(dfChosen_arms_1)
-
+# 27 combinations
 vEps <- c(0.2,0.1,0.05)
 vC <- c(0.3,0.2,0.1)
-vExploration <- c(0.1)#0.2,0.3)
+vExploration <- c(0.1,0.2,0.3)
 
+
+# create df for sim_params functions - greedy and TS
 dfParams_eps <- expand.grid(vExploration, vEps)
 colnames(dfParams_eps) <- c("exploration", "eps")
 
+# create df for sim_params functions - UCB
 dfParam_UCB <-  expand.grid(vExploration, vC)
-colnames(dfParams_eps) <- c("exploration", "C")
+colnames(dfParam_UCB) <- c("exploration", "C")
 
 
-param_results_eps <- sim_params(df_small_sim, n_sims, 100, "greedy", dfParams_eps)
+param_results_greedy <- sim_params(df_small_sim, n_sims, n_per_sim, "greedy", dfParams_eps)
+param_results_C <- sim_params(dfSims, n_sims, n_per_sim, "UCB", dfParam_UCB)
+param_results_TS <- sim_params(dfSims, n_sims, n_per_sim, "TS", dfParams_eps)
 
 
 dfAggregate_results_eps <- rbind(param_results_eps[[1]]$aggregate, param_results_eps[[2]]$aggregate, param_results_eps[[3]]$aggregate)
+dfAggregate_results_C <- rbind(param_results_C[[1]]$aggregate, param_results_C[[2]]$aggregate, param_results_C[[3]]$aggregate)
+dfAggregate_results_TS <- rbind(param_results_TS[[1]]$aggregate, param_results_TS[[2]]$aggregate, param_results_TS[[3]]$aggregate)
+
+
 
 ggplot(data = dfAggregate_results_eps, aes(x =index, y = avg_cumReward, col=param)) +
   geom_line()+
@@ -484,11 +519,6 @@ ggplot(data = dfAggregate_results_eps, aes(x =index, y = avg_cumReward, col=para
   theme_bw()+
   labs(x = "Time Steps", y = "Avg. Total Clicks", title="Greedy,  exploration = 10%")
 
-
-
-param_results_C <- sim_params(df_small_sim, n_sims, 100, "UCB", dfParam_UCB)
-
-dfAggregate_results_C <- rbind(param_results_C[[1]]$aggregate, param_results_C[[2]]$aggregate, param_results_C[[3]]$aggregate)
 
 ggplot(data = dfAggregate_results_C, aes(x =index, y = avg_cumReward, col=param)) +
   geom_line()+
@@ -498,82 +528,15 @@ ggplot(data = dfAggregate_results_C, aes(x =index, y = avg_cumReward, col=param)
 
 
 
-param_results_TS <- sim_params(df_small_sim, n_sims, 100, "TS", dfParams_eps)
-
-
-
-help(runSD)
-help("rollapply")
-
-#check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
-result_sim_eps_01 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.1)
-result_sim_eps_005 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.05)
-result_sim_eps_001 <- sim_policy(dfBandit_sim, "greedy", 0.2, eps=0.01)
-
-#check greedy with epsilon of 0.1, 0.05, 0.001 and exploration of 20% of the data
-result_sim_c_01 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.1)
-result_sim_c_02 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.2)
-result_sim_c_03 <- sim_policy(dfBandit_sim, "UCB", 0.2, fC=0.3)
-
-result_TS<- sim_policy(dfBandit_sim, "TS", 0.2)
-
-
-length(unique(dfYahoo_day1$Arm))
-unique(dfYahoo_day1$Arm)
-
-# visualize the results for epsilon difference 
-dfResult_sims_eps <- data.frame(1:length(result_sim_eps_01$total$result), 
-                                  cumsum(result_sim_eps_01$total$result), 
-                                  cumsum(result_sim_eps_005$total$result),
-                                  cumsum(result_sim_eps_001$total$result))
-colnames(dfResult_sims_eps) <- c("index", "total_reward_eps_01", "total_reward_eps_005", "total_reward_eps_001")
-dfResult_eps_melted <- melt(dfResult_sims_eps, id.vars = "index")
-
-ggplot(data = dfResult_eps_melted, aes(x = index, y = value, col = variable)) +
+ggplot(data = dfAggregate_results_TS, aes(x =index, y = avg_cumReward, col=param)) +
   geom_line()+
+  geom_ribbon(aes(ymax = upper, ymin = lower, fill = param), alpha=0.1, colour = NA)+
   theme_bw()+
-  labs(x = "Time Steps", y = "Total Clicks", col = "Parameter")+
-  scale_color_discrete(name = "Epsilon = ", labels = c("10%", "5%", "1%"))
+  labs(x = "Time Steps", y = "Avg. Total Clicks", title="TS,  exploration = 10%")
 
-
-
-# visualize the results for c difference 
-dfResult_sims_c <- data.frame(1:length(result_sim_c_01$total$result), 
-                                cumsum(result_sim_c_01$total$result), 
-                                cumsum(result_sim_c_02$total$result),
-                                cumsum(result_sim_c_03$total$result))
-colnames(dfResult_sims_c) <- c("index", "total_reward_c_01", "total_reward_c_02", "total_reward_c_03")
-dfResult_c_melted <- melt(dfResult_sims_c, id.vars = "index")
-
-ggplot(data = dfResult_c_melted, aes(x = index, y = value, col = variable)) +
-  geom_line()+
-  theme_bw()+
-  labs(x = "Time Steps", y = "Total Clicks", col = "Parameter")+
-  scale_color_discrete(name = "C = ", labels = c("10%", "20%", "30%"))
-
-
-# check for thompson sampling 
-dfResult_sims_ts <- data.frame(1:length(result_TS$total$result),
-                               cumsum(result_TS$total$result))
-
-colnames(dfResult_sims_ts) <- c("index", "total_reward")
-dfResult_ts_melted <- melt(dfResult_sims_ts, id.vars="index")
-colnames(dfResult_ts_melted)
-ggplot(data = dfResult_ts_melted, aes(x = index, y = value, col = variable)) +
-  geom_line()+
-  theme_bw()+
-  labs(x = "Time Steps", y = "Total Clicks", col = "Parameter")
-
-create_armChoice_plot(result_TS$total)
-
-
-# get the actual probabilities 
-dfSummary <- dfBandit_sim %>% 
-  group_by(Arm)%>%
-  summarise(succes_size = sum(result),
-            sample_size = n(),
-            succes_rate = succes_size/sample_size)
-dfSummary$succes_rate
+################################################################################
+# F) Compare to package
+################################################################################
 
 
 
