@@ -7,7 +7,7 @@
 #           C) Define functions to run simulations 
 #           D) Define functions to analyse the results (plots) 
 #           E) Run simulations to get results per method 
-#           F) Compare to package
+#           F) Create plot on % of best arm chosen
 #################
 
 
@@ -298,7 +298,7 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment,only_t
 }
 
 ###
-# sim_experiment: simulates performance of a policy for an certain number of sims
+# sim_experiment: In parallel, simulates performance of a policy for an certain number of sims
 # 
 #   Arguments: 
 #     dfBandit: n x 2 dataframe, with colnames "Arm", "Result" required. If day_split = TRUE, then needs to be n x 3 with colnames "Arm", "Result", "day"
@@ -359,33 +359,28 @@ sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,
 
 sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
   
-  
+  # if policy is greedy
   if(policy_type == "greedy"){
-    
-    
-    results_params <- apply(dfParams, MARGIN=1,function(row_param){
+      results_params <- apply(dfParams, MARGIN=1,function(row_param){
       print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and epsilon: ", row_param[2]))
       
       # run the sim with exploration and epsilon param
       exploration_sim <- row_param[1]
       eps_sim <- row_param[2]
-      
       result_for_param <- sim_experiment(dfBandit, n_sim, n_per_sim, policy_type, exploration = exploration_sim, eps = eps_sim)
       
       # get the aggregate result
       aggregate_result <- calc_rewards_sims(result_for_param)
       aggregate_result$param <- paste0("exploration=", exploration_sim, ", epsilon=", eps_sim)
       
-      # save parameters
+      # save parameters, all individual results, and return
       params <- row_param
-      
       results <- list(aggregate = aggregate_result, details = result_for_param, params = params)
       
       return(results)
     })
   }else if (policy_type == "UCB"){
-    
-    results_params <- apply(dfParams, MARGIN=1,function(row_param){
+      results_params <- apply(dfParams, MARGIN=1,function(row_param){
       print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and C: ", row_param[2]))
       
       # run the sim with exploration and C param
@@ -397,16 +392,14 @@ sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
       aggregate_result <- calc_rewards_sims(result_for_param)
       aggregate_result$param <- paste0("exploration=", exploration_sim, ", C=", C_sim)
       
-      # save parameters
+      # save parameters, all individual results, and return
       params <- row_param
-      
       results <- list(aggregate = aggregate_result, details = result_for_param, params = params)
       
       return(results)
     })
   }else if (policy_type == "TS"){
-    
-    results_params <- apply(dfParams, MARGIN=1,function(row_param){
+      results_params <- apply(dfParams, MARGIN=1,function(row_param){
       print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1]))
       
       # run the sim with exploration and C param
@@ -417,26 +410,15 @@ sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
       aggregate_result <- calc_rewards_sims(result_for_param)
       aggregate_result$param <- paste0("exploration=", exploration_sim)
       
-      # save parameters
+      # # save parameters, all individual results, and return
       params <- row_param
-      
-      
       results <- list(aggregate = aggregate_result, details = result_for_param, params = params)
       
       return(results)
-      
     })
   }
-  
   return(results_params)
-  
-  
 }
-
-
-
-
-
 
 ################################################################################
 # D) Define functions to analyse the results  
@@ -561,17 +543,10 @@ colnames(dfParam_UCB) <- c("exploration", "C")
 dfParam_TS <- expand.grid(vExploration)
 colnames(dfParam_TS) <- c("exploration")
 
-
-
 # get results for the parameters per method
 param_results_greedy <- sim_params(dfArticles, n_sims, n_per_sim, "greedy", dfParams_eps)
 param_results_C <- sim_params(dfArticles, n_sims, n_per_sim, "UCB", dfParam_UCB)
 param_results_TS <- sim_params(dfArticles, n_sims, n_per_sim, "TS", dfParam_TS)
-
-
-
- # repeat enough to get enough observations for sim
-list_dfBandit_exp <- rep(ldf_perDay,n_sim/length(ldf_perDay))
 
 
 # create latex table 
@@ -579,7 +554,7 @@ create_latexTable <- function(param_results, dfParam){
   dfResults <- list.rbind(lapply(param_results, function(x){x$aggregate[n_per_sim,]}))
   dfResults_withParam <- cbind(dfResults, dfParam)
   
-  dfResults_withParam$showcase <- paste0(dfResults$avg_cumReward, " [",round(dfResults$lower,1),"-",round(dfResults$upper,1),"] ")
+  dfResults_withParam$showcase <- paste0(round(dfResults$avg_cumReward/n_per_sim,3)*100, "% [",round(dfResults$lower/n_per_sim,3)*100,"% -",round(dfResults$upper/n_per_sim,3)*100,"%] ")
   dfResults_withParam <- dfResults_withParam[order(dfResults_withParam$exploration),c(6:8)]
   
   dfTable <- recast(dfResults_withParam, exploration + variable ~ C, id.var = c("C", "exploration"))
@@ -596,6 +571,12 @@ xtable(t(dfGreedy_table))
 dfUCB_table <- create_latexTable(param_results_C, dfParam_UCB)
 t(dfUCB_table)
 xtable(t(dfUCB_table))
+
+
+# latex table for TS
+dfResults_TS <- list.rbind(lapply(param_results_TS, function(x){x$aggregate[n_per_sim,]}))
+dfResults_TS$showcase <- paste0(dfResults_TS$avg_cumReward, " [",round(dfResults_TS$lower,1),"-",round(dfResults_TS$upper,1),"] ")
+t(dfResults_TS[,c(5,6)])
 
 # create dataframes for visualisations 
 dfAggregate_results_eps_explore <- rbind(param_results_greedy[[1]]$aggregate, param_results_greedy[[2]]$aggregate, param_results_greedy[[3]]$aggregate)
@@ -634,6 +615,13 @@ GreedyResult_compare <- param_results_greedy[[3]]$details
 UCBResult_compare  <- param_results_C[[9]]$details
 TSResult_compare <- param_results_TS[[3]]$details
 
+
+
+################################################################################
+# F) Create plot on % of best arm chosen
+################################################################################
+
+
 calc_percBestArm_experiment <- function(i, lResults, index_day  = rep(1:10, 10)){  
   
   # get df of results, the day, and percentage of each arm chosen
@@ -661,42 +649,28 @@ calc_percBestArm_experiment <- function(i, lResults, index_day  = rep(1:10, 10))
 
 lBest_arm_chosen_greedy <- lapply(index_result,calc_percBestArm_experiment, lResults = GreedyResult_compare)
 lBest_arm_chosen_UCB <- lapply(index_result, calc_percBestArm_experiment, lResults = UCBResult_compare)
-lBest_arm_chosen_greedy <- lapply(index_result,calc_percBestArm_experiment, lResults = TSResult_compare)
+lBest_arm_chosen_TS <- lapply(index_result,calc_percBestArm_experiment, lResults = TSResult_compare)
 
 dfCombined_best_arms_greedy <- list.cbind(lBest_arm_chosen_greedy)
 dfCombined_best_arms_UCB <- list.cbind(lBest_arm_chosen_UCB)
+dfCombined_best_arms_TS <- list.cbind(lBest_arm_chosen_TS)
+
 dfAvg_perc_best_arm_greedy <- data.frame(perc_best_arm = apply(dfCombined_best_arms_greedy, 1, mean))
 dfAvg_perc_best_arm_UCB <- data.frame(perc_best_arm = apply(dfCombined_best_arms_UCB, 1, mean))
+dfAvg_perc_best_arm_TS <- data.frame(perc_best_arm = apply(dfCombined_best_arms_TS, 1, mean))
 
-tail(dfAvg_perc_best_arm_greedy)
-tail(dfAvg_perc_best_arm_UCB)
 
-dfAvg_perc_best_arm <- cbind(dfAvg_perc_best_arm_greedy, dfAvg_perc_best_arm_UCB, 1:10000)
-colnames(dfAvg_perc_best_arm) <- c("Greedy", "UCB", "index")
+dfAvg_perc_best_arm <- cbind(dfAvg_perc_best_arm_greedy, dfAvg_perc_best_arm_UCB, dfAvg_perc_best_arm_TS,1:10000)
+colnames(dfAvg_perc_best_arm) <- c("Greedy", "UCB","TS" ,"index")
 
 
 ggplot(data = melt(dfAvg_perc_best_arm, id.vars = "index"), aes(y = value, x = index,col = variable))+
-  geom_line()+
-  labs(col = "Algorithm", x = "Timesteps", y = "% Of Best Performing Article Chosen")+
-  theme_bw()
+  geom_line(size=2)+
+  labs(col = "Algorithm", x = "Timesteps", y = "% Of Best Performing Article Chosen", title="Random exploration of 30%, Epsilon = 0.2, C = 0.1")+
+  theme_bw()+
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) # Multiply by 100 & add %  
 
 
-################################################################################
-# F) Compare to package
-################################################################################
-
-greedy_result <- sim_policy(dfSims[,1:2], "greedy", exploration=0.3, size_experiment=10000, eps=0.1,only_total = FALSE)
-
-
-# simulate with package - key difference is that they seem to know beforehand what the top choice is
-horizon <- 5000
-simulations <- 1 
-conversionProbabilities <- dfSummary$succes_rate
-bandit <- BasicBernoulliBandit$new(weights = conversionProbabilities)
-policy <- EpsilonGreedyPolicy$new(epsilon = 0.10) 
-agent <- Agent$new(policy, bandit) 
-historyEG <- Simulator$new(agent, horizon, simulations)$run() 
-plot(historyEG, type = "arms",      legend_title = 'Epsilon Greedy',      legend_position = "topright",      smooth = TRUE) 
 
 
 
