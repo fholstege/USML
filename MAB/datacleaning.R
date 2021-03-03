@@ -20,6 +20,8 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
   # Obtain files from folder
   files <- grep(".*gz", list.files(), value=T)
   
+  print(files)
+  
   # Initialize final data matrix
   df <- as.data.frame(matrix(0, nrow=length(files)*rsample.size, ncol=2))
 
@@ -59,3 +61,15 @@ data.cleaning <- function(funcdir, datadir, nrow = NULL, rsample.size = NULL) {
   return(df)
   
 }
+getwd()
+
+funcdir <- getwd()
+funcdir
+datadir <- "C:/Users/flori/OneDrive/Documents/Tinbergen/Courses/USML/Data/YahooOpenData"
+setwd(datadir)
+
+data.cleaning(funcdir, datadir, rsample.size=1000000)
+
+getwd()
+dfAllData <- read.csv("all_data.csv")
+

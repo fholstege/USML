@@ -1,0 +1,52 @@
+starting worker pid=944 on localhost:11909 at 22:27:55.090
+starting worker pid=6928 on localhost:11909 at 22:27:55.118
+starting worker pid=6500 on localhost:11909 at 22:27:55.145
+starting worker pid=17164 on localhost:11909 at 22:27:55.145
+starting worker pid=3444 on localhost:11909 at 22:27:55.173
+starting worker pid=16524 on localhost:11909 at 22:27:55.181
+starting worker pid=7380 on localhost:11909 at 22:27:55.190
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Warning messages:
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+1: package 'contextual' was built under R version 4.0.3 
+Warning messages:
+ls' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+4: package 'itertools' was built under R version 4.0.3 
+Warning messages:
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+4: package 'itertools' was built under R version 4.0.3 
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+4: package 'itertools' was built under R version 4.0.3 
+Warning messages:
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+4: package 'itertools' was built under R version 4.0.3 
+Warning messages:
+1: package 'contextual' was built under R version 4.0.3 
+2: package 'data.table' was built under R version 4.0.3 
+3: package 'iterators' was built under R version 4.0.3 
+4: package 'itertools' was built under R version 4.0.3 
