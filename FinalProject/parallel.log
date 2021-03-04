@@ -1,102 +1,17 @@
-starting worker pid=11456 on localhost:11979 at 12:22:38.472
-starting worker pid=17136 on localhost:11979 at 12:22:38.478
-starting worker pid=8616 on localhost:11979 at 12:22:38.515
-starting worker pid=8376 on localhost:11979 at 12:22:38.525
-starting worker pid=26892 on localhost:11979 at 12:22:38.552
-starting worker pid=17960 on localhost:11979 at 12:22:38.555
-starting worker pid=6836 on localhost:11979 at 12:22:38.561
-Loading required package: contextual
-loaded contextual and set parent environment
-Loading required package: contextual
-Loading required package: contextual
-loaded contextual and set parent environment
-loaded contextual and set parent environment
-Loading required package: contextual
-Loading required package: contextual
-loaded contextual and set parent environment
-loaded contextual and set parent environment
-Loading required package: contextual
-Loading required package: contextual
-loaded contextual and set parent environment
-loaded contextual and set parent environment
-Error in unserialize(node$con) : error reading from connection
-Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-In addition: Warning messages:
-Error in unserialize(node$con) : error reading from connec2: package 'data.table' was built under R version 4.0.3 
-vData.SOCK0node -> unserialize
-3: package 'iterators' was built under R version 4.0.3 
-ction
-Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-In addition: In addition: tertools' was built under R version 4.0.3 
-Warning messages:
-Warning messages:
-ual' was built under R version 4.0.3 
-Error in unserialize(node$con) : error reading from connection
-Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-3: package 'iterators' was built under R version 4.0.3 
+starting worker pid=2632 on localhost:11308 at 18:20:18.998
 
-3: package 'iterators' was built under R version 4.0.3 
-sion 4.0.3 
- <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 Execution halted
-2: package 'data.taExecution halted
-er R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-
-4: package 'itertools' was built under R version 4.0.3 
-
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Execution halted
-Execution halted
-Error in unserialize(node$con) : error reading from connection
-Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-In addition: Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Error in unserialize(node$con) : error reading from connection
-Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCK0node -> unserialize
-In addition: ted
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Execution halted
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
-Warning messages:
-1: package 'contextual' was built under R version 4.0.3 
-2: package 'data.table' was built under R version 4.0.3 
-3: package 'iterators' was built under R version 4.0.3 
-4: package 'itertools' was built under R version 4.0.3 
+starting worker pid=8056 on localhost:11308 at 18:20:19.000
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment
+Loading required package: contextual
+loaded contextual and set parent environment

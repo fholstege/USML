@@ -21,7 +21,7 @@ pacman::p_load(contextual,
                devtools) 
 
 # get clean data with arms, rewards, days, and user features
-dfCleanData <- read.csv("FinalProject/dfUserData_readyForAnalysis.csv")
+dfCleanData <- read.csv("dfUserData_readyForAnalysis.csv")
 dfCleanData[,1]<-NULL
 
 
@@ -32,35 +32,39 @@ dfCleanData[,1]<-NULL
 ################################################################################
 
 
+
 ##########################
 # sim_agents_offlineReplay: simulates a list of agent for a given dataframe
 #
 
+
 sim_agents_offlineReplay <- function(df,formula, n_sim, size_sim, n_arms, agent_type,param,...){
-  
-  # get the arms in df, and sample a random n amount
-  arms_in_df <- unique(df$arm)
-  selected_arms <- sample(arms_in_df, n_arms)
-  
-  # leave an df with only these arms
-  df_selected <- df %>% filter(arm %in% selected_arms)
-  
-  # notify user if smaller amount of data than wanted because of the arm restriction
-  if(nrow(df_selected) < size_sim){
-    print("The data does not have enough observations - reducing the size of the simulation")
-    size_sim <- nrow(df_selected)
+
+  # select n arms with a minimum observations
+  arms_df <- unique(df$arm)
+  arms_sim <-sample(arms_df, n_arms)
+  df_selected <-  df %>% filter(arm %in% arms_sim)
+  df_selected_n <- df_selected[1:size_sim,]
+  dfN_perArm <- df_selected_n %>% group_by(arm) %>% summarise(n = n())
+  print(paste0("Entering the simulation with a dataframe of size ", nrow(df_selected_n), " and ", n_arms, " arms. The minimum observations for one arm is ",min(dfN_perArm$n)))
+ 
+  # ensure arms start with 1 to ensure it works in simulation
+  i <- 1
+  for(a in unique(df_selected$arm)){
+    df_selected_n[df_selected_n$arm == a, "arm"] <- i
+    i <- i + 1
   }
   
   # define the bandit
-  bandit <- OfflineBootstrappedReplayBandit$new(formula = formula, data = df_selected, replacement = TRUE, randomize = FALSE)
-  print(param)
-  # 
-  if(agent_type == "LinUCB"){
-    agents <- list(Agent$new(LinUCBDisjointOptimizedPolicy$new(alpha = param), bandit,"LinUCB"))
-  }else if (agent_type == "LinTS"){
-    agents <- list(Agent$new(ContextualLinTSPolicy$new(v = param), bandit, "LinTS"))
-  }
+  bandit <- OfflineReplayEvaluatorBandit$new(formula = formula,data = df_selected_n, randomize = FALSE, replacement = TRUE)
   
+  if(agent_type == "LinUCB"){
+    agents <- list(Agent$new(LinUCBDisjointPolicy$new(alpha = param), bandit,"LinUCB"),
+                   Agent$new(UCB1Policy$new(), bandit, "UCB1"))
+  }else if (agent_type == "LinTS"){
+    agents <- list(Agent$new(ContextualLinTSPolicy$new(v = param), bandit, "LinTS"),
+                   Agent$new(ThompsonSamplingPolicy$new(), bandit, "TS"))
+  }
   
   simulator <- Simulator$new(agents, horizon= size_sim, do_parallel = TRUE, simulations = n_sim, progress_file = TRUE)
   
@@ -74,8 +78,10 @@ sim_agents_offlineReplay <- function(df,formula, n_sim, size_sim, n_arms, agent_
 #
 sim_agents_offlineReplay_allDays <- function(dfAllDays, formula, n_sim, size_sim, n_arms, agent_type,param){
   
+  # create list of dataframe per day
   lDayData <- split(dfAllDays, f = dfAllDays$day)
   
+  # go over list of dataframes per day, simulating for each
   lResults_day <- lapply(lDayData, function(dfDay){
     
     # indicate to user whats happening
@@ -84,6 +90,7 @@ sim_agents_offlineReplay_allDays <- function(dfAllDays, formula, n_sim, size_sim
     # remove day variable
     dfDay$day <- NULL
     
+    # get result of the simulation
     result_sim <- sim_agents_offlineReplay(dfDay, formula = formula, n_sim = n_sim, size_sim = size_sim, n_arms=n_arms, agent_type = agent_type,param = param)
     
     return(result_sim)
@@ -93,29 +100,57 @@ sim_agents_offlineReplay_allDays <- function(dfAllDays, formula, n_sim, size_sim
   
 }
 
-# define this dataframe as the one used in simulations, with enough data points per day
-dfSims <- dfCleanData %>% group_by(day) %>% sample_n(10000)
 
+
+
+
+# define this dataframe as the one used in simulations, with enough data points per day
+dfSims <- dfCleanData %>% group_by(day)
+
+
+set.seed(234)
+rand_day <- sample(1:10,1)
+rand_5days <- sample(1:10,5)
+dfSims_randomDay <-  dfSims %>% filter(day == rand_day)
+dfSims_random5Days <- dfSims %>% filter(day %in% rand_5days)
+
+n_sim <- 10
+n_arms <- 10
+size_sim <- 200000
+
+dfSims_randomDay$day <- NULL
 
 formula_sim =  formula("reward ~ arm | user1 + user2 + user3 + user4 + user5")
-lresult_linUCB_alpha_025 <- sim_agents_offlineReplay_allDays(dfAllDays = dfSims %>% filter(day %in% c(1,2)),formula=formula_sim, n_sim = 10, size_sim = 100, n_arms = 10, agent_type = "LinUCB", param = 0.25)
-lresult_linUCB_alpha_05 <- sim_agents_offlineReplay_allDays(dfAllDays = dfSims %>% filter(day %in% c(1,2)),formula=formula_sim, n_sim = 10, size_sim = 10000, n_arms = 10, agent_type = "LinUCB", param = 0.5)
-lresult_linUCB_alpha_1 <- sim_agents_offlineReplay_allDays(dfAllDays = dfSims %>% filter(day %in% c(1,2)),formula=formula_sim, n_sim = 10, size_sim = 10000, n_arms = 10, agent_type = "LinUCB", param = 1)
-lresult_linTS <- sim_agents_offlineReplay_allDays(dfAllDays = dfSims,formula=formula_sim, n_sim = 10, size_sim = 10000, n_arms = 10, agent_type = "LinTS")
-
-agent_names <- c("Lin UCB - Alpha=0.25", "Lin UCB - Alpha=0.5", "Lin UCB - Alpha=1")
-lresult_linUCB_alpha_025[[2]]
 
 
-analyse_results_sim <- function(df_sim_agent, max_obs){
+lresult_TS_fiveDays <- sim_agents_offlineReplay_allDays(df = dfSims_random5Days,formula=formula_sim,  n_sim = n_sim, size_sim = size_sim, n_arms = n_arms, agent_type = "LinTS", param = 0.2)
+lresult_UCB_fiveDays <- sim_agents_offlineReplay_allDays(df = dfSims_random5Days,formula=formula_sim,  n_sim = n_sim, size_sim = size_sim, n_arms = n_arms, agent_type = "LinUCB", param = 1)
+
+
+
+lresult_linTS <- sim_agents_offlineReplay(df = dfSims_randomDay,formula=formula_sim,  n_sim = n_sim, size_sim = size_sim, n_arms = n_arms, agent_type = "LinTS", param = 0.2)
+lresult_linUCB <- sim_agents_offlineReplay(df = dfSims_randomDay,formula=formula_sim,  n_sim = n_sim, size_sim = size_sim, n_arms = n_arms, agent_type = "LinUCB", param = NA)
+
+
+
+lapply(lresult_UCB_fiveDays, function(dfDay){
   
-  lDayResults <- lapply(lresult_linUCB_alpha_025, function(dfDay){
-    
-    dfDay_select <- dfDay %>% filter(t <= max_obs) %>% select(t, cum_reward, sim)
-    dfDay_select_transposed <- dcast(data = dfDay_select,formula = t~sim,fun.aggregate = sum,value.var = "cum_reward")
-    dfDay_select_transposed$t <- NULL
-    
-  })
+  dfDay_select <- dfDay%>% filter(t <= max_obs) %>% select(t, cum_reward, sim) %>% filter(agent == "LinUCB")
+  
+  
+  
+})
+
+
+
+analyse_results_sim <- function(df_sim_agent, max_obs, agent){
+  
+  
+  dfDay_select <- dfDay %>% filter(t <= max_obs) %>% select(t, cum_reward, sim)
+  dfDay_select_transposed <- dcast(data = dfDay_select,formula = t~sim,fun.aggregate = sum,value.var = "cum_reward")
+  dfDay_select_transposed$t <- NULL
+  
+  
   
   dfAllResults <- list.cbind(lDayResults)
   
@@ -137,7 +172,7 @@ analyse_results_sim <- function(df_sim_agent, max_obs){
 ggplot(data = dfAnalyse_sim, aes(x = t, y = avg_CumReward/t)) + 
   geom_line()
 
-plot(t, type = "cumulative", regret = FALSE, rate = TRUE,
+plot(lresult_linUCB_alpha_025, type = "cumulative", regret = FALSE, rate = TRUE,
      legend_position = "topleft")
 
 
@@ -286,71 +321,66 @@ sim_policy <- function(dfBandit, policy_type, exploration,size_experiment,only_t
   i = 1
   while(i <= n_exploit){
     
-    if(policy_type == "greedy"){
-      
-      # pick an arm according to the 'greedy' policy
-      chosen_arm <- policy_greedy(index_arms=index_arms, index_best_arm=index_best_arm,...)
-      
-    }else if (policy_type == "UCB"){
-      
-      # pick an arm according to the 'UCB' policy
-      chosen_arm <- policy_UCB(dfResult, ...)
-    } else if (policy_type == "TS"){
-      
-      # pick an arm according to the thompson sampling policy
-      chosen_arm <- policy_TS(dfResult=dfResult, n_arms= length(index_arms), index_arms=index_arms,...)
-    }
+  } if (policy_type == "UCB"){
     
-    # get dataframe with remaining results for chosen arm, and pick a random instance
-    chosen_arm_df <- ldf_arms[[chosen_arm]]
+    # pick an arm according to the 'UCB' policy
+    chosen_arm <- policy_UCB(dfResult, ...)
+  } else if (policy_type == "TS"){
     
-    # obtain the result, remove this from the overall remaining data
-    index_result <- sample(1:length(chosen_arm_df$result), 1)
-    result <- chosen_arm_df[index_result,]$result
-    
-    if(length(result) == 0){
-      print(i)
-      print("You have run out of observations from a chosen arm - decrease the size of the experiment, or increase the size of the dataset")
-      index_arms <- index_arms[-chosen_arm]
-      break
-    }
-    
-    # get vector of results (arm, result)
-    vResult <- c(dfResult[chosen_arm,]$Arm, result)
-    dfResult_exploit[i,] <- vResult
-    
-    # update the overall results data
-    dfResult[chosen_arm,]$succes_size <- dfResult[chosen_arm,]$succes_size +  result
-    dfResult[chosen_arm,]$sample_size <- dfResult[chosen_arm,]$sample_size + 1
-    dfResult[chosen_arm,]$succes_rate <- dfResult[chosen_arm,]$succes_size/dfResult[chosen_arm,]$sample_size
-    
-    # if policy type is thompson sampling, add alpha and beta param to the dataframe\
-    if(policy_type == "TS"){
-      dfResult$alpha <- start_alpha + dfResult$succes_size 
-      dfResult$beta <- start_beta + (dfResult$sample_size - dfResult$succes_size)
-      
-    }else if (policy_type == "greedy"){
-      # update the best arm
-      index_best_arm <- which.max(dfResult$succes_rate)
-    }
-    # onto the next
-    i <- i + 1
+    # pick an arm according to the thompson sampling policy
+    chosen_arm <- policy_TS(dfResult=dfResult, n_arms= length(index_arms), index_arms=index_arms,...)
   }
   
-  # if true, only return the df with all results
-  if(only_total){
-    results <- list(total = rbind(dfResult_explore,dfResult_exploit))
-  }else{
-    # save data in list
-    results <- list(Overall = dfResult, 
-                    after_explore = dfResult_exploit, 
-                    before_explore = dfResult_explore, 
-                    total = rbind(dfResult_explore,dfResult_exploit),
-                    total_succes_rate = sum(dfResult$succes_size)/sum(dfResult$sample_size))
-  }
-  return(results)
+  # get dataframe with remaining results for chosen arm, and pick a random instance
+  chosen_arm_df <- ldf_arms[[chosen_arm]]
   
+  # obtain the result, remove this from the overall remaining data
+  index_result <- sample(1:length(chosen_arm_df$result), 1)
+  result <- chosen_arm_df[index_result,]$result
+  
+  if(length(result) == 0){
+    print(i)
+    print("You have run out of observations from a chosen arm - decrease the size of the experiment, or increase the size of the dataset")
+    index_arms <- index_arms[-chosen_arm]
+    break
+  }
+  
+  # get vector of results (arm, result)
+  vResult <- c(dfResult[chosen_arm,]$Arm, result)
+  dfResult_exploit[i,] <- vResult
+  
+  # update the overall results data
+  dfResult[chosen_arm,]$succes_size <- dfResult[chosen_arm,]$succes_size +  result
+  dfResult[chosen_arm,]$sample_size <- dfResult[chosen_arm,]$sample_size + 1
+  dfResult[chosen_arm,]$succes_rate <- dfResult[chosen_arm,]$succes_size/dfResult[chosen_arm,]$sample_size
+  
+  # if policy type is thompson sampling, add alpha and beta param to the dataframe\
+  if(policy_type == "TS"){
+    dfResult$alpha <- start_alpha + dfResult$succes_size 
+    dfResult$beta <- start_beta + (dfResult$sample_size - dfResult$succes_size)
+    
+  }else if (policy_type == "greedy"){
+    # update the best arm
+    index_best_arm <- which.max(dfResult$succes_rate)
+  }
+  # onto the next
+  i <- i + 1
 }
+
+# if true, only return the df with all results
+if(only_total){
+  results <- list(total = rbind(dfResult_explore,dfResult_exploit))
+}else{
+  # save data in list
+  results <- list(Overall = dfResult, 
+                  after_explore = dfResult_exploit, 
+                  before_explore = dfResult_explore, 
+                  total = rbind(dfResult_explore,dfResult_exploit),
+                  total_succes_rate = sum(dfResult$succes_size)/sum(dfResult$sample_size))
+}
+return(results)
+
+
 
 ###
 # sim_experiment: In parallel, simulates performance of a policy for an certain number of sims
@@ -414,27 +444,8 @@ sim_experiment <- function(dfBandit, n_sim, n_per_sim, policy_type, exploration,
 
 sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
   
-  # if policy is greedy
-  if(policy_type == "greedy"){
-    results_params <- apply(dfParams, MARGIN=1,function(row_param){
-      print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and epsilon: ", row_param[2]))
-      
-      # run the sim with exploration and epsilon param
-      exploration_sim <- row_param[1]
-      eps_sim <- row_param[2]
-      result_for_param <- sim_experiment(dfBandit, n_sim, n_per_sim, policy_type, exploration = exploration_sim, eps = eps_sim)
-      
-      # get the aggregate result
-      aggregate_result <- calc_rewards_sims(result_for_param)
-      aggregate_result$param <- paste0("exploration=", exploration_sim, ", epsilon=", eps_sim)
-      
-      # save parameters, all individual results, and return
-      params <- row_param
-      results <- list(aggregate = aggregate_result, details = result_for_param, params = params)
-      
-      return(results)
-    })
-  }else if (policy_type == "UCB"){
+  
+  if (policy_type == "UCB"){
     results_params <- apply(dfParams, MARGIN=1,function(row_param){
       print(paste0("Running simulations for the ", policy_type, " policy, with parameters exploration: ", row_param[1], " and C: ", row_param[2]))
       
@@ -474,5 +485,15 @@ sim_params <- function(dfBandit, n_sim, n_per_sim, policy_type, dfParams){
   }
   return(results_params)
 }
+
+
+# first, define parameters for simulation
+n_sims = 10
+n_per_sim = 10000
+
+vC <- c(0.3,0.2,0.1)
+vExploration <- c(0.01)
+
+
 
 

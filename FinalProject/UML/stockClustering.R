@@ -85,13 +85,25 @@ calc_clusters <- function(index_date, years_for_correlation, dfReturns, method =
 # get the returns from the index date until X years back 
 cluster_results_past5Years <- calc_clusters(as.Date("2020-12-31"), 5, dfStockReturns_after2000)
 
+## cut the tree into  clusters, allocate each stock to a cluster
+clusters_stocks <- cutree(cluster_results_past5Years, k=n_clusters)
 
-# based on plot, cut in number of clusters, set to company names
-n_clusters <- sum(cluster_results_past5Years$height>1.1)
+dfStockClusters <- data.frame(Ticker = names(clusters_stocks),cluster = clusters_stocks)
+dfStockInfo_clusters <- merge(dfStockInfo, dfStockClusters, on = "Ticker")
 
 
-labels_names <- merge(data.frame(Ticker = cluster_results_past5Years$labels), dfStockInfo_clusters, on = "Ticker")
-labels_names
+# check which stocks are in each cluster
+dfStockClusters_sum <- dfStockInfo_clusters %>% 
+    group_by(cluster, GISC_Sector) %>%
+    summarise(count = n())
+
+# make plot to illustrate the difference in sector division across clusters
+ggplot(data = dfStockClusters_sum, aes(x = as.factor(cluster), y = count, fill = GISC_Sector))+
+  geom_bar(stat = 'identity') +
+  theme_classic() + 
+  labs(fill = "GISC Sector", x = "Cluster", y = "Count") + 
+  theme(axis.text.x = element_text(size = 14), axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 14), axis.title.y = element_text(size = 16))
 
 
 # create parameters dendogram visualisation
@@ -101,32 +113,25 @@ nodePar <- list(lab.cex = 0.6, pch = c(NA, 19),
 colors_dendogram <-brewer.pal(n_clusters, "Set1")
 
 
+# based on plot, cut in number of clusters, set to company names
+n_clusters <- sum(cluster_results_past5Years$height>1.1)
+idx <- sapply(cluster_results_past5Years$labels, function(x) {
+  which(dfStockInfo$Ticker == x)
+})
+
+cluster_results_past5Years$labels <- dfStockInfo[idx,]$Company
+cluster_results_past5Years$labels <-sapply(strsplit(cluster_results_past5Years$labels," "), `[`, 1)
+
 
 # create dendogram visualisation 
 cluster_results_dendogram %>% set("branches_k_color", 
-    value = colors_dendogram, k = n_clusters, branches_lwd = 3) %>% 
+                                  value = colors_dendogram, k = n_clusters, branches_lwd = 3) %>% 
   plot(xlab = "Avg. Distance Between Clusters",
        nodePar = nodePar, horiz = TRUE) %>% 
   abline(v = 1.1, lty = 2) 
 
-## cut the tree into  clusters, allocate each stock to a cluster
-clusters_stocks <- cutree(cluster_results_past5Years, k=n_clusters)
-dfStockClusters <- data.frame(Ticker = names(clusters_stocks),cluster = clusters_stocks)
-dfStockInfo_clusters <- merge(dfStockInfo, dfStockClusters, on = "Ticker")
 
-# check which stocks are in each cluster
-dfStockClusters_sum <- dfStockInfo_clusters %>% 
-    group_by(cluster, GISC_Sector) %>%
-    summarise(count = n())
 
-dfStockClusters_sum
-dfStockInfo_clusters
-
-# make plot to illustrate the difference in sector division across clusters
-ggplot(data = dfStockClusters_sum, aes(x = as.factor(cluster), y = count, fill = GISC_Sector))+
-  geom_bar(stat = 'identity') +
-  theme_classic() + 
-  labs(fill = "GISC Sector", x = "Cluster", y = "Count")
 
 
 #######################################
@@ -252,17 +257,17 @@ colnames(dfStockInfo)[3] <- "cluster"
 
 
 backtest_result_clusters <- backtest_clustering(index_date, 
-                                                years_for_recalc =3, 
-                                                years_for_correlation = 1, 
+                                                years_for_recalc =1, 
+                                                years_for_correlation = 3, 
                                                 dfReturns_all = dfStockReturns_after2000, 
-                                                cutoff_distance_clusters=1.05, 
+                                                cutoff_distance_clusters=1.1, 
                                                 threshold_n_clusters = 1) 
 backtest_result_sectors <- backtest_clustering(index_date, years_for_recalc =1, years_for_correlation = 5, dfReturns_all = dfStockReturns_after2000,sectors=TRUE,dfSectorInfo=dfStockInfo) 
 
 
 years_for_correlation <- c(1,2,3,4,5)
-cutoff_distance_clusters <- c(0.95, 1,1.05)
-years_for_recalc = c(0.25,0.5, 1)
+cutoff_distance_clusters <- c(0.95,1,1.05, 1.1)
+years_for_recalc = c(1)
 
 param_grid <- expand.grid(years_for_correlation, cutoff_distance_clusters, years_for_recalc)
 colnames(param_grid) <- c("years_for_corr", "cutoff_distance_clusters", "years_for_recalc")
@@ -289,7 +294,7 @@ backtest_param <- apply(param_grid, 1, function(param){
 backtest_param_results <- t(matrix(unlist(backtest_param), nrow = 5))
 dfBacktest_param_results <- data.frame(backtest_param_results)
 colnames(dfBacktest_param_results) <- c("years_for_correlation", "years_for_recalc", "cutoff_distance_clusters", "avg_diversification_benefit", "avg_correlation_clusters")
-
+dfBacktest_param_results
 
 
 dfDiversification_clusters <- backtest_result_clusters$dfDiversification
@@ -321,7 +326,6 @@ ggplot(data = dfCompareDiversification_benefit_melted, aes(x = date, y = value, 
   scale_y_continuous(labels = function(x) paste0(x*100, "%"))+
        theme(axis.text.x = element_text(size = 13), axis.title.x = element_text(size = 14),
                              axis.text.y = element_text(size = 13), axis.title.y = element_text(size = 14))
-help("scale_fill_discrete")
 
 mean(backtest_result_clusters$avg_cor, na.rm= TRUE)
 mean(backtest_result_sectors$avg_cor)

@@ -166,3 +166,27 @@ sim_agents_offlineReplay_allDays <- function(dfAllDays, formula, n_sim, size_sim
   
 }
 
+##########################
+# sim_agents_offlineReplay_allDays: simulates a list of agent for a set of days, equally spreading the sample across days
+#
+sim_agents_offlineReplay_allDays <- function(dfAllDays, formula, n_sim, size_sim, n_arms, agent_type,param){
+  
+  lDayData <- split(dfAllDays, f = dfAllDays$day)
+  
+  lResults_day <- lapply(lDayData, function(dfDay){
+    
+    # indicate to user whats happening
+    print(paste0("Currently simulation for day: " ,unique(dfDay$day)))
+    
+    # remove day variable
+    dfDay$day <- NULL
+    
+    result_sim <- sim_agents_offlineReplay(dfDay, formula = formula, n_sim = n_sim, size_sim = size_sim, n_arms=n_arms, agent_type = agent_type,param = param)
+    
+    return(result_sim)
+  })
+  
+  return(lResults_day)
+  
+}
+
